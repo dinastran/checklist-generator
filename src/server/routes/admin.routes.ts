@@ -227,7 +227,7 @@ export const adminRoutes = () => {
         membership.organizationId,
         templateId,
       );
-      if (!readiness || readiness.status !== "draft")
+      if (readiness?.status !== "draft")
         return c.var.inertia.redirect("/admin/checklists");
       if (readiness.activeItems < 1 || readiness.activeRoles < 1) {
         if (c.var.sessionToken)
