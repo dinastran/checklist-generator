@@ -31,7 +31,6 @@ export default function OrganizationNew() {
 						name="name"
 						className={inputClass}
 						value={data.name}
-						autoFocus
 						onChange={(event) => {
 							clearErrors("name");
 							setData("name", event.target.value);
