@@ -149,7 +149,7 @@ export const authRoutes = () => {
     }).catch((err) =>
       console.error("[mail] failed to send verification email:", err),
     );
-    return page.redirect("/dashboard");
+    return page.redirect("/organizations/new");
   });
 
   app.post("/login", validateJson(loginBody), async (c) => {
