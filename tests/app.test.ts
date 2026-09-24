@@ -105,7 +105,7 @@ async function registerUser(
 async function createOrganizationMember(
 	ownerEmail: string,
 	memberEmail: string,
-): Promise<{ cookie: string; organizationId: string }> {
+): Promise<{ cookie: string; organizationId: string; roleId: string }> {
 	const {
 		createUser,
 		findUserByEmail,
@@ -155,6 +155,7 @@ async function createOrganizationMember(
 	return {
 		cookie: sessionCookie(login),
 		organizationId: organization!.organizationId,
+		roleId,
 	};
 }
 
@@ -402,6 +403,113 @@ describe("organization roles & isolation", () => {
 		expect((await page(res)).props.errors.organizationId).toContain(
 			"tidak tersedia",
 		);
+	});
+});
+
+describe("checklist execution", () => {
+	it("keeps drafts hidden, publishes by role, and persists user progress", async () => {
+		const ownerCookie = await registerUser("checklist-owner@example.com");
+		const member = await createOrganizationMember(
+			"checklist-owner@example.com",
+			"checklist-member@example.com",
+		);
+
+		const create = await call("/admin/checklists", {
+			method: "POST",
+			headers: { ...xhr, cookie: ownerCookie },
+			body: {
+				name: "Opening Shift",
+				description: "Checklist awal kerja",
+				roleIds: [member.roleId],
+				items: [{ title: "Buka kanal layanan", description: "Pastikan kanal aktif." }],
+			},
+		});
+		expect(create.status).toBe(303);
+
+		const beforePublish = await call("/checklists", {
+			headers: { ...xhr, cookie: member.cookie },
+		});
+		expect(beforePublish.status).toBe(200);
+		expect((await page(beforePublish)).props.templates).toHaveLength(0);
+
+		const { listOrganizationChecklistTemplates } = await import("../src/server/db");
+		const templates = await listOrganizationChecklistTemplates(
+			member.organizationId,
+		);
+		const template = templates.find((item) => item.name === "Opening Shift");
+		expect(template).toBeTruthy();
+
+		const publish = await call(
+			`/admin/checklists/${template!.id}/publish`,
+			{
+				method: "POST",
+				headers: { ...xhr, cookie: ownerCookie },
+			},
+		);
+		expect(publish.status).toBe(303);
+
+		const available = await call("/checklists", {
+			headers: { ...xhr, cookie: member.cookie },
+		});
+		expect(available.status).toBe(200);
+		const availablePage = await page(available);
+		expect(availablePage.props.templates).toHaveLength(1);
+		expect(availablePage.props.templates[0].id).toBe(template!.id);
+
+		const open = await call(`/checklists/${template!.id}`, {
+			headers: { ...xhr, cookie: member.cookie },
+		});
+		expect(open.status).toBe(200);
+		const runPage = await page(open);
+		expect(runPage.component).toBe("ChecklistRun");
+		expect(runPage.props.run.progressPercent).toBe(0);
+		expect(runPage.props.items).toHaveLength(1);
+
+		const runId = runPage.props.run.id as string;
+		const runItemId = runPage.props.items[0].id as string;
+		const complete = await call(
+			`/checklists/runs/${runId}/items/${runItemId}`,
+			{
+				method: "POST",
+				headers: { cookie: member.cookie },
+				body: { completed: true },
+			},
+		);
+		expect(complete.status).toBe(200);
+		const completePayload = await complete.json();
+		expect(completePayload.run.progressPercent).toBe(100);
+		expect(completePayload.run.status).toBe("completed");
+
+		const forbidden = await call(
+			`/checklists/runs/${runId}/items/${runItemId}`,
+			{
+				method: "POST",
+				headers: { cookie: ownerCookie },
+				body: { completed: false },
+			},
+		);
+		expect(forbidden.status).toBe(404);
+
+		const reopen = await call(
+			`/checklists/runs/${runId}/items/${runItemId}`,
+			{
+				method: "POST",
+				headers: { cookie: member.cookie },
+				body: { completed: false },
+			},
+		);
+		expect(reopen.status).toBe(200);
+		const reopenPayload = await reopen.json();
+		expect(reopenPayload.run.progressPercent).toBe(0);
+		expect(reopenPayload.run.status).toBe("in_progress");
+
+		const history = await call("/history", {
+			headers: { ...xhr, cookie: member.cookie },
+		});
+		expect(history.status).toBe(200);
+		const historyPage = await page(history);
+		expect(historyPage.props.runs).toHaveLength(1);
+		expect(historyPage.props.runs[0].id).toBe(runId);
 	});
 });
 
