@@ -10,6 +10,8 @@ import Dashboard from "./pages/Dashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import OrganizationNew from "./pages/OrganizationNew";
+import OrganizationSwitch from "./pages/OrganizationSwitch";
 import Profile from "./pages/Profile";
 import Register from "./pages/Register";
 import ResetPassword from "./pages/ResetPassword";
@@ -24,6 +26,8 @@ export const pages: Record<string, PageModule> = {
 	"./pages/ForgotPassword.tsx": { default: ForgotPassword },
 	"./pages/Login.tsx": { default: Login },
 	"./pages/NotFound.tsx": { default: NotFound },
+	"./pages/OrganizationNew.tsx": { default: OrganizationNew },
+	"./pages/OrganizationSwitch.tsx": { default: OrganizationSwitch },
 	"./pages/Profile.tsx": { default: Profile },
 	"./pages/Register.tsx": { default: Register },
 	"./pages/ResetPassword.tsx": { default: ResetPassword },
