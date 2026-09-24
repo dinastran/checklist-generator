@@ -15,6 +15,7 @@ export interface User {
 	avatarUrl: string | null;
 	/** 0 = not verified, 1 = verified. */
 	emailVerified: number;
+	status: "active" | "inactive";
 	createdAt: string;
 }
 
