@@ -38,6 +38,28 @@ const NAV_ITEMS: NavItem[] = [
 		match: (p) => p === "/dashboard" || p.startsWith("/dashboard"),
 	},
 	{
+		href: "/checklists",
+		label: "Checklist Saya",
+		icon: (
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+				<path d="M9 6h11M9 12h11M9 18h11" />
+				<path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" />
+			</svg>
+		),
+		match: (p) => p === "/checklists" || p.startsWith("/checklists/"),
+	},
+	{
+		href: "/history",
+		label: "Riwayat",
+		icon: (
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+				<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+				<path d="M3 3v5h5M12 7v5l3 2" />
+			</svg>
+		),
+		match: (p) => p === "/history",
+	},
+	{
 		href: "/profile",
 		label: "Profile",
 		icon: (
