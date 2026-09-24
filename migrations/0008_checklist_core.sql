@@ -36,13 +36,28 @@ CREATE TABLE checklist_template_roles (
   PRIMARY KEY (template_id, role_id)
 );
 
+CREATE TABLE checklist_schedules (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  template_id TEXT NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
+  schedule_type TEXT NOT NULL
+    CHECK (schedule_type IN ('daily', 'weekly', 'monthly', 'custom')),
+  rule TEXT,
+  timezone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'paused')),
+  created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE checklist_runs (
   id TEXT PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   template_id TEXT NOT NULL REFERENCES checklist_templates(id) ON DELETE RESTRICT,
   template_version INTEGER NOT NULL,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  schedule_id TEXT,
+  schedule_id TEXT REFERENCES checklist_schedules(id) ON DELETE SET NULL,
   period_key TEXT,
   source_key TEXT NOT NULL UNIQUE,
   template_name_snapshot TEXT NOT NULL,
@@ -93,6 +108,10 @@ CREATE INDEX idx_items_template_active
   ON checklist_items(template_id, is_active, position);
 CREATE INDEX idx_template_roles_role
   ON checklist_template_roles(role_id, template_id);
+CREATE INDEX idx_schedules_org_status
+  ON checklist_schedules(organization_id, status);
+CREATE INDEX idx_schedules_template
+  ON checklist_schedules(template_id);
 CREATE INDEX idx_runs_org_user_status
   ON checklist_runs(organization_id, user_id, status, last_activity_at);
 CREATE INDEX idx_runs_org_template_status
