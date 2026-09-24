@@ -79,6 +79,15 @@ export const inertiaMiddleware =
           headers: Object.fromEntries(c.req.raw.headers.entries()),
           user,
           flash,
+          organization: organizationMembership
+            ? {
+                id: organizationMembership.organizationId,
+                name: organizationMembership.organizationName,
+                slug: organizationMembership.organizationSlug,
+                timezone: organizationMembership.timezone,
+                isAdmin: Boolean(organizationMembership.isAdmin),
+              }
+            : null,
           sessionToken,
           cspNonce,
         },
