@@ -34,6 +34,7 @@ interface D1PreparedStatement {
  */
 export interface D1Mock {
   prepare(sql: string): D1PreparedStatement;
+  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
   exec(sql: string): Promise<void>;
   /** Internal handle for cleanup. */
   __db: Database;
@@ -74,6 +75,21 @@ export function createD1Mock(): D1Mock {
 
   return {
     prepare,
+    async batch<T = unknown>(
+      statements: D1PreparedStatement[],
+    ): Promise<D1Result<T>[]> {
+      db.exec("BEGIN");
+      try {
+        const results: D1Result<T>[] = [];
+        for (const statement of statements)
+          results.push(await statement.run<T>());
+        db.exec("COMMIT");
+        return results;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    },
     async exec(sql: string): Promise<void> {
       db.exec(sql);
     },

@@ -15,6 +15,7 @@ export interface User {
 	avatarUrl: string | null;
 	/** 0 = not verified, 1 = verified. */
 	emailVerified: number;
+	status: "active" | "inactive";
 	createdAt: string;
 }
 
@@ -30,7 +31,16 @@ export interface FlashData {
 export interface SharedPageProps {
 	[key: string]: unknown;
 	auth: { user: User | null };
+	organization: OrganizationContext | null;
 	errors: Record<string, string>;
+}
+
+export interface OrganizationContext {
+	id: string;
+	name: string;
+	slug: string;
+	timezone: string;
+	isAdmin: boolean;
 }
 
 /** Props for the dashboard page. */

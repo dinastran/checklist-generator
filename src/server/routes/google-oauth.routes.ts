@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import {
   clearOAuthStateCookie,
   createSession,
+  setActiveOrganization,
   OAUTH_STATE_COOKIE,
   setOAuthStateCookie,
   setSessionCookie,
@@ -24,6 +25,7 @@ import {
   findUserByEmail,
   findUserByGoogleId,
   linkGoogleAccount,
+  listOrganizationsForUser,
   updateUserAvatar,
   type UserRow,
 } from "../db";
@@ -150,6 +152,8 @@ export const googleOauthRoutes = () => {
       const accessToken = await exchangeCode(code, `${url.origin}/auth/google/callback`);
       const profile = await fetchProfile(accessToken);
       const user = await findOrCreateGoogleUser(profile);
+      if (user.status !== "active")
+        throw new Error("Account is inactive");
       // Avatar storage skipped in CF experiment (no R2). Update avatar
       // URL to the external Google picture if the user has no avatar yet.
       if (profile.picture && !user.avatarUrl) {
@@ -157,7 +161,25 @@ export const googleOauthRoutes = () => {
       }
       const session = await createSession(user.id);
       setSessionCookie(c, session.token, session.expiresAt);
-      return new Response(null, { status: 303, headers: { location: new URL("/dashboard", url).toString() } });
+      const organizations = await listOrganizationsForUser(user.id);
+      if (organizations.length === 0)
+        return new Response(null, {
+          status: 303,
+          headers: { location: new URL("/organizations/new", url).toString() },
+        });
+      if (organizations.length === 1) {
+        const organization = organizations[0];
+        if (organization)
+          await setActiveOrganization(session.token, organization.organizationId);
+        return new Response(null, {
+          status: 303,
+          headers: { location: new URL("/dashboard", url).toString() },
+        });
+      }
+      return new Response(null, {
+        status: 303,
+        headers: { location: new URL("/organizations/switch", url).toString() },
+      });
     } catch (err) {
       console.error("[google-oauth]", err);
       return new Response(null, { status: 302, headers: { location: new URL("/login?notice=google_failed", url).toString() } });

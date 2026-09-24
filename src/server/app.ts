@@ -20,9 +20,21 @@ import { Inertia, type InertiaAssets } from "./inertia";
 import { inertiaMiddleware, type AppEnv } from "./inertia-middleware";
 import { logError, requestLogger } from "./logger";
 import { authRoutes, VALIDATION_MESSAGES } from "./routes/auth.routes";
+import {
+  adminRoutes,
+  ADMIN_CHECKLIST_VALIDATION_MESSAGES,
+  ADMIN_ROLE_VALIDATION_MESSAGES,
+  ADMIN_USER_VALIDATION_MESSAGES,
+} from "./routes/admin.routes";
 import { avatarRoutes } from "./routes/avatars.routes";
+import { checklistRoutes } from "./routes/checklists.routes";
+import { invitationRoutes } from "./routes/invitations.routes";
 import { googleOauthRoutes } from "./routes/google-oauth.routes";
 import { pageRoutes } from "./routes/pages.routes";
+import {
+  organizationRoutes,
+  ORGANIZATION_VALIDATION_MESSAGES,
+} from "./routes/organizations.routes";
 import {
   profileRoutes,
   PROFILE_VALIDATION_MESSAGES,
@@ -40,11 +52,30 @@ const COMPONENT_BY_PATH: Record<string, string> = {
   "/reset-password": "ResetPassword",
   "/profile": "Profile",
   "/profile/password": "Profile",
+  "/organizations/new": "OrganizationNew",
+  "/organizations/switch": "OrganizationSwitch",
+  "/admin/roles": "AdminRoles",
+  "/admin/checklists": "AdminChecklistNew",
+  "/admin/users": "AdminUsers",
+  "/admin/users/invite": "AdminUsers",
+  "/invitations/accept": "InvitationAccept",
 };
 
-const VALIDATION_MESSAGES_ALL = {
-  ...VALIDATION_MESSAGES,
-  ...PROFILE_VALIDATION_MESSAGES,
+const VALIDATION_MESSAGES_BY_PATH: Record<
+  string,
+  Record<string, string>
+> = {
+  "/register": VALIDATION_MESSAGES,
+  "/login": VALIDATION_MESSAGES,
+  "/forgot-password": VALIDATION_MESSAGES,
+  "/reset-password": VALIDATION_MESSAGES,
+  "/profile": PROFILE_VALIDATION_MESSAGES,
+  "/profile/password": PROFILE_VALIDATION_MESSAGES,
+  "/organizations/new": ORGANIZATION_VALIDATION_MESSAGES,
+  "/organizations/switch": ORGANIZATION_VALIDATION_MESSAGES,
+  "/admin/roles": ADMIN_ROLE_VALIDATION_MESSAGES,
+  "/admin/checklists": ADMIN_CHECKLIST_VALIDATION_MESSAGES,
+  "/admin/users/invite": ADMIN_USER_VALIDATION_MESSAGES,
 };
 
 /**
@@ -69,6 +100,7 @@ function inertiaFromContext(
       headers: Object.fromEntries(c.req.raw.headers.entries()),
       user: null,
       flash: {},
+      organization: null,
       sessionToken,
       cspNonce: c.get("cspNonce") ?? "",
     },
@@ -149,7 +181,8 @@ export function createApp(assets: InertiaAssets) {
       for (const item of err.errors) {
         const field = item.path.replace(/^\//, "");
         if (field && !errors[field])
-          errors[field] = VALIDATION_MESSAGES_ALL[item.path] ?? item.message;
+          errors[field] =
+            VALIDATION_MESSAGES_BY_PATH[pathname]?.[item.path] ?? item.message;
       }
       if (!component) return c.json({ errors }, 422);
       return inertiaFromContext(c, assets).error(component, errors);
@@ -170,10 +203,14 @@ export function createApp(assets: InertiaAssets) {
   app.get("/.well-known/*", () => new Response(null, { status: 404 }));
 
   app.route("/", authRoutes());
+  app.route("/", adminRoutes());
+  app.route("/", checklistRoutes());
+  app.route("/", invitationRoutes());
   app.route("/", avatarRoutes());
   app.route("/", googleOauthRoutes());
   app.route("/", pageRoutes());
   app.route("/", profileRoutes());
+  app.route("/", organizationRoutes());
 
   return app;
 }

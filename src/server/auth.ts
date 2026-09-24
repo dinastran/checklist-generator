@@ -22,6 +22,7 @@ import {
   insertPasswordReset,
   insertSession,
   updateSessionFlash,
+  updateSessionActiveOrganization,
   deleteEmailVerification,
   deleteUserEmailVerifications,
   findEmailVerification,
@@ -152,6 +153,7 @@ export interface SessionInfo {
 export interface ResolvedSession {
   user: User;
   flash: FlashData;
+  activeOrganizationId: string | null;
 }
 
 /** 256-bit random token; it is never logged and only lives in the cookie.
@@ -182,6 +184,7 @@ export async function resolveUser(
 interface CachedSession {
   user: User;
   flash: FlashData;
+  activeOrganizationId: string | null;
   expiresAt: string;
 }
 
@@ -254,7 +257,11 @@ export async function resolveSession(
       await deleteCachedSession(hashed);
       return null;
     }
-    return { user: cached.user, flash: cached.flash };
+    return {
+      user: cached.user,
+      flash: cached.flash,
+      activeOrganizationId: cached.activeOrganizationId,
+    };
   }
 
   // 2. Cache miss — full D1 lookup (findSession + findUserById).
@@ -278,16 +285,30 @@ export async function resolveSession(
   await setCachedSession(hashed, {
     user,
     flash,
+    activeOrganizationId: session.activeOrganizationId,
     expiresAt: session.expiresAt,
   });
 
-  return { user, flash };
+  return {
+    user,
+    flash,
+    activeOrganizationId: session.activeOrganizationId,
+  };
 }
 
 /** Delete a session by its raw (cookie) token — hashes before hitting the DB. */
 export async function deleteSessionByToken(token: string): Promise<void> {
   const hashed = await hashToken(token);
   await deleteSession(hashed);
+  await deleteCachedSession(hashed);
+}
+
+export async function setActiveOrganization(
+  token: string,
+  organizationId: string | null,
+): Promise<void> {
+  const hashed = await hashToken(token);
+  await updateSessionActiveOrganization(organizationId, hashed);
   await deleteCachedSession(hashed);
 }
 /** Delete every session for `userId` except the one owning `token` (password
@@ -488,6 +509,25 @@ import { safeUrl } from "./url";
 
 export const requireAuth = async (c: Context<AppEnv>, next: Next) => {
   if (!c.var.user) return redirectTo(c.req.raw, "/login");
+  return next();
+};
+
+export const requireMembership = async (c: Context<AppEnv>, next: Next) => {
+  if (!c.var.user) return redirectTo(c.req.raw, "/login");
+  if (!c.var.organizationMembership)
+    return redirectTo(c.req.raw, "/organizations/switch");
+  return next();
+};
+
+export const requireOrganizationAdmin = async (
+  c: Context<AppEnv>,
+  next: Next,
+) => {
+  if (!c.var.user) return redirectTo(c.req.raw, "/login");
+  if (!c.var.organizationMembership)
+    return redirectTo(c.req.raw, "/organizations/switch");
+  if (!c.var.organizationMembership.isAdmin)
+    return redirectTo(c.req.raw, "/dashboard");
   return next();
 };
 

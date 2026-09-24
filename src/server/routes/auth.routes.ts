@@ -12,6 +12,7 @@ import {
   createEmailVerification,
   createPasswordReset,
   createSession,
+  setActiveOrganization,
   deleteSessionByToken,
   guestOnly,
   hashPassword,
@@ -23,7 +24,12 @@ import {
   verifyPasswordReset,
 } from "../auth";
 import { config } from "../config";
-import { createUser, findUserByEmail, updateUserPassword } from "../db";
+import {
+  createUser,
+  findUserByEmail,
+  listOrganizationsForUser,
+  updateUserPassword,
+} from "../db";
 import type { AppEnv } from "../inertia-middleware";
 import { sendMail } from "../mailer";
 import { rateLimit } from "../rate-limit";
@@ -149,14 +155,18 @@ export const authRoutes = () => {
     }).catch((err) =>
       console.error("[mail] failed to send verification email:", err),
     );
-    return page.redirect("/dashboard");
+    return page.redirect("/organizations/new");
   });
 
   app.post("/login", validateJson(loginBody), async (c) => {
     const body = c.req.valid("json") as LoginBody;
     const page = c.var.inertia;
     const user = await findUserByEmail(body.email);
-    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
+    if (
+      !user ||
+      user.status !== "active" ||
+      !(await verifyPassword(body.password, user.passwordHash))
+    ) {
       return page.error("Login", {
         email: "These credentials do not match our records.",
       });
@@ -166,7 +176,16 @@ export const authRoutes = () => {
     const session = await createSession(user.id);
     setSessionCookie(c, session.token, session.expiresAt);
     await setFlash(session.token, { success: `Welcome back, ${user.name}!` });
-    return page.redirect("/dashboard");
+    const organizations = await listOrganizationsForUser(user.id);
+    if (organizations.length === 0)
+      return page.redirect("/organizations/new");
+    if (organizations.length === 1) {
+      const organization = organizations[0];
+      if (organization)
+        await setActiveOrganization(session.token, organization.organizationId);
+      return page.redirect("/dashboard");
+    }
+    return page.redirect("/organizations/switch");
   });
 
   app.post("/logout", requireAuth, async (c) => {

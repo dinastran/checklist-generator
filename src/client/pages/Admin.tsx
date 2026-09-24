@@ -1,9 +1,9 @@
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link } from "@inertiajs/react";
 import Layout from "../components/Layout";
 import type { Paginated, User } from "../../shared/types";
 
 function formatDate(iso: string): string {
-	return new Date(iso).toLocaleDateString(undefined, {
+	return new Date(iso).toLocaleDateString("id-ID", {
 		year: "numeric",
 		month: "short",
 		day: "numeric",
@@ -15,11 +15,7 @@ function pageUrl(page: number): string {
 }
 
 export default function Admin({ users }: { users: Paginated<User> }) {
-	const { props } = usePage();
-	if (props.auth.user?.role !== "admin") return null;
-
 	const { currentPage, lastPage } = users.meta;
-
 	const btnGhost =
 		"inline-flex items-center justify-center gap-1.5 px-4 py-2.5 border border-border rounded-lg bg-transparent text-text font-semibold text-sm cursor-pointer transition-colors hover:bg-primary-soft hover:no-underline";
 
@@ -28,9 +24,14 @@ export default function Admin({ users }: { users: Paginated<User> }) {
 			<Head title="Admin" />
 			<h1 className="text-[1.6rem] m-0 mb-1 tracking-tight">Admin</h1>
 			<p className="text-muted mb-3">
-				{users.meta.total} user{users.meta.total === 1 ? "" : "s"} total — page{" "}
-				{currentPage} of {lastPage}.
+				{users.meta.total} anggota aktif, halaman {currentPage} dari {lastPage}.
 			</p>
+
+			<div className="flex gap-2 flex-wrap mb-5">
+				<Link href="/admin/users" className={btnGhost}>Kelola anggota</Link>
+				<Link href="/admin/roles" className={btnGhost}>Kelola role</Link>
+				<Link href="/admin/checklists" className={btnGhost}>Kelola checklist</Link>
+			</div>
 
 			<section className="bg-surface border border-border rounded-radius p-6">
 				<div className="overflow-x-auto">
@@ -38,47 +39,37 @@ export default function Admin({ users }: { users: Paginated<User> }) {
 						<thead>
 							<tr>
 								<th className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap text-muted text-xs uppercase tracking-wider bg-bg">
-									Name
+									Nama
 								</th>
 								<th className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap text-muted text-xs uppercase tracking-wider bg-bg">
 									Email
 								</th>
 								<th className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap text-muted text-xs uppercase tracking-wider bg-bg">
-									Role
-								</th>
-								<th className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap text-muted text-xs uppercase tracking-wider bg-bg">
-									Joined
+									Akun dibuat
 								</th>
 							</tr>
 						</thead>
 						<tbody className="[&>tr:last-child>td]:border-b-0">
-							{users.data.map((u) => (
+							{users.data.map((user) => (
 								<tr
-									key={u.id}
+									key={user.id}
 									className="transition-colors hover:bg-primary-soft"
 								>
 									<td className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap">
-										{u.name}
+										{user.name}
 									</td>
 									<td className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap">
-										{u.email}
+										{user.email}
 									</td>
 									<td className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap">
-										<span
-											className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${u.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : "bg-primary-soft text-primary"}`}
-										>
-											{u.role}
-										</span>
-									</td>
-									<td className="text-left px-3 py-2.5 border-b border-border whitespace-nowrap">
-										{formatDate(u.createdAt)}
+										{formatDate(user.createdAt)}
 									</td>
 								</tr>
 							))}
 							{users.data.length === 0 ? (
 								<tr>
-									<td colSpan={4} className="text-center text-muted p-6">
-										No users yet.
+									<td colSpan={3} className="text-center text-muted p-6">
+										Belum ada anggota aktif.
 									</td>
 								</tr>
 							) : null}
@@ -93,29 +84,29 @@ export default function Admin({ users }: { users: Paginated<User> }) {
 			>
 				{currentPage > 1 ? (
 					<Link href={pageUrl(currentPage - 1)} className={btnGhost}>
-						Previous
+						Sebelumnya
 					</Link>
 				) : (
 					<span
 						className={`${btnGhost} opacity-35 cursor-not-allowed`}
 						aria-disabled="true"
 					>
-						Previous
+						Sebelumnya
 					</span>
 				)}
 				<span className="text-muted text-sm">
-					Page {currentPage} of {lastPage}
+					Halaman {currentPage} dari {lastPage}
 				</span>
 				{currentPage < lastPage ? (
 					<Link href={pageUrl(currentPage + 1)} className={btnGhost}>
-						Next
+						Berikutnya
 					</Link>
 				) : (
 					<span
 						className={`${btnGhost} opacity-35 cursor-not-allowed`}
 						aria-disabled="true"
 					>
-						Next
+						Berikutnya
 					</span>
 				)}
 			</nav>

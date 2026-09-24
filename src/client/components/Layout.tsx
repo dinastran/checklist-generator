@@ -1,14 +1,14 @@
 import { Link, router, usePage } from "@inertiajs/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Role, SharedPageProps } from "../../shared/types";
+import type { SharedPageProps } from "../../shared/types";
 import Brand from "./Brand";
 
 type NavItem = {
 	href: string;
 	label: string;
 	icon: ReactNode;
-	roles?: Role[];
+	adminOnly?: boolean;
 	/** Match prefix so `/admin` highlights on `/admin?page=2`. */
 	match?: (path: string) => boolean;
 };
@@ -38,6 +38,28 @@ const NAV_ITEMS: NavItem[] = [
 		match: (p) => p === "/dashboard" || p.startsWith("/dashboard"),
 	},
 	{
+		href: "/checklists",
+		label: "Checklist Saya",
+		icon: (
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+				<path d="M9 6h11M9 12h11M9 18h11" />
+				<path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" />
+			</svg>
+		),
+		match: (p) => p === "/checklists" || p.startsWith("/checklists/"),
+	},
+	{
+		href: "/history",
+		label: "Riwayat",
+		icon: (
+			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+				<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+				<path d="M3 3v5h5M12 7v5l3 2" />
+			</svg>
+		),
+		match: (p) => p === "/history",
+	},
+	{
 		href: "/profile",
 		label: "Profile",
 		icon: (
@@ -61,7 +83,7 @@ const NAV_ITEMS: NavItem[] = [
 	{
 		href: "/admin",
 		label: "Admin",
-		roles: ["admin"],
+		adminOnly: true,
 		icon: (
 			<svg
 				viewBox="0 0 24 24"
@@ -311,8 +333,9 @@ export default function Layout({ children }: { children: ReactNode }) {
 	}, [url]);
 
 	const currentPath = url?.split("?")[0] ?? "";
+	const organization = props.organization;
 	const items = NAV_ITEMS.filter(
-		(i) => !i.roles || (user && i.roles.includes(user.role)),
+		(item) => !item.adminOnly || organization?.isAdmin,
 	);
 
 	const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
@@ -504,7 +527,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 										>
 											Dashboard
 										</Link>
-										{user.role === "admin" ? (
+										{organization?.isAdmin ? (
 											<Link
 												href="/admin"
 												className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg bg-transparent text-text text-sm text-left cursor-pointer transition-colors hover:bg-primary-soft hover:no-underline"
@@ -513,6 +536,13 @@ export default function Layout({ children }: { children: ReactNode }) {
 												Admin console
 											</Link>
 										) : null}
+										<Link
+											href="/organizations/switch"
+											className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg bg-transparent text-text text-sm text-left cursor-pointer transition-colors hover:bg-primary-soft hover:no-underline"
+											role="menuitem"
+										>
+											Ganti organisasi
+										</Link>
 										<div className="h-px bg-border my-1.5" />
 										<button
 											type="button"
