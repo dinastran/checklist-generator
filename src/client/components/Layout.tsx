@@ -1,14 +1,14 @@
 import { Link, router, usePage } from "@inertiajs/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Role, SharedPageProps } from "../../shared/types";
+import type { SharedPageProps } from "../../shared/types";
 import Brand from "./Brand";
 
 type NavItem = {
 	href: string;
 	label: string;
 	icon: ReactNode;
-	roles?: Role[];
+	adminOnly?: boolean;
 	/** Match prefix so `/admin` highlights on `/admin?page=2`. */
 	match?: (path: string) => boolean;
 };
@@ -61,7 +61,7 @@ const NAV_ITEMS: NavItem[] = [
 	{
 		href: "/admin",
 		label: "Admin",
-		roles: ["admin"],
+		adminOnly: true,
 		icon: (
 			<svg
 				viewBox="0 0 24 24"
@@ -311,8 +311,9 @@ export default function Layout({ children }: { children: ReactNode }) {
 	}, [url]);
 
 	const currentPath = url?.split("?")[0] ?? "";
+	const organization = props.organization;
 	const items = NAV_ITEMS.filter(
-		(i) => !i.roles || (user && i.roles.includes(user.role)),
+		(item) => !item.adminOnly || organization?.isAdmin,
 	);
 
 	const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
@@ -504,7 +505,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 										>
 											Dashboard
 										</Link>
-										{user.role === "admin" ? (
+										{organization?.isAdmin ? (
 											<Link
 												href="/admin"
 												className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg bg-transparent text-text text-sm text-left cursor-pointer transition-colors hover:bg-primary-soft hover:no-underline"
@@ -513,6 +514,13 @@ export default function Layout({ children }: { children: ReactNode }) {
 												Admin console
 											</Link>
 										) : null}
+										<Link
+											href="/organizations/switch"
+											className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg bg-transparent text-text text-sm text-left cursor-pointer transition-colors hover:bg-primary-soft hover:no-underline"
+											role="menuitem"
+										>
+											Ganti organisasi
+										</Link>
 										<div className="h-px bg-border my-1.5" />
 										<button
 											type="button"
