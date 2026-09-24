@@ -46,7 +46,7 @@ export const checklistRoutes = () => {
     const template = await findAvailableChecklistTemplate(
       membership.organizationId,
       user.id,
-      c.req.param("templateId"),
+      c.req.param("templateId") ?? "",
     );
     if (!template) return c.notFound();
 
@@ -97,8 +97,8 @@ export const checklistRoutes = () => {
       const user = c.var.user;
       if (!membership || !user)
         return c.json({ error: "organization_context_required" }, 403);
-      const runId = c.req.param("runId");
-      const runItemId = c.req.param("runItemId");
+      const runId = c.req.param("runId") ?? "";
+      const runItemId = c.req.param("runItemId") ?? "";
       const run = await findChecklistRunForUser(
         membership.organizationId,
         user.id,
