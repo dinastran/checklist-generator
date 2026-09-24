@@ -30,6 +30,7 @@ export interface FlashData {
 export interface SharedPageProps {
 	[key: string]: unknown;
 	auth: { user: User | null };
+	organization: OrganizationContext | null;
 	errors: Record<string, string>;
 }
 
