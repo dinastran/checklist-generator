@@ -48,10 +48,18 @@ const COMPONENT_BY_PATH: Record<string, string> = {
   "/organizations/switch": "OrganizationSwitch",
 };
 
-const VALIDATION_MESSAGES_ALL = {
-  ...VALIDATION_MESSAGES,
-  ...PROFILE_VALIDATION_MESSAGES,
-  ...ORGANIZATION_VALIDATION_MESSAGES,
+const VALIDATION_MESSAGES_BY_PATH: Record<
+  string,
+  Record<string, string>
+> = {
+  "/register": VALIDATION_MESSAGES,
+  "/login": VALIDATION_MESSAGES,
+  "/forgot-password": VALIDATION_MESSAGES,
+  "/reset-password": VALIDATION_MESSAGES,
+  "/profile": PROFILE_VALIDATION_MESSAGES,
+  "/profile/password": PROFILE_VALIDATION_MESSAGES,
+  "/organizations/new": ORGANIZATION_VALIDATION_MESSAGES,
+  "/organizations/switch": ORGANIZATION_VALIDATION_MESSAGES,
 };
 
 /**
@@ -76,6 +84,7 @@ function inertiaFromContext(
       headers: Object.fromEntries(c.req.raw.headers.entries()),
       user: null,
       flash: {},
+      organization: null,
       sessionToken,
       cspNonce: c.get("cspNonce") ?? "",
     },
@@ -156,7 +165,8 @@ export function createApp(assets: InertiaAssets) {
       for (const item of err.errors) {
         const field = item.path.replace(/^\//, "");
         if (field && !errors[field])
-          errors[field] = VALIDATION_MESSAGES_ALL[item.path] ?? item.message;
+          errors[field] =
+            VALIDATION_MESSAGES_BY_PATH[pathname]?.[item.path] ?? item.message;
       }
       if (!component) return c.json({ errors }, 422);
       return inertiaFromContext(c, assets).error(component, errors);
