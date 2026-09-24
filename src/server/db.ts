@@ -1236,3 +1236,237 @@ export const listUserChecklistHistory = async (
       .bind(organizationId, userId, limit)
       .all<ChecklistRunRow>()
   ).results;
+
+
+// ---------------------------------------------------------------------------
+// Membership management and invitations
+// ---------------------------------------------------------------------------
+
+export interface OrganizationMemberRow {
+  membershipId: string;
+  userId: number;
+  name: string;
+  email: string;
+  userStatus: "active" | "inactive";
+  membershipStatus: "active" | "inactive";
+  roleIds: string | null;
+  roleNames: string | null;
+}
+
+export interface OrganizationInvitationRow {
+  id: string;
+  organizationId: string;
+  organizationName: string;
+  email: string;
+  tokenHash: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expiresAt: string;
+  createdAt: string;
+}
+
+export const listOrganizationMembers = async (organizationId: string) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          m.id AS membershipId,
+          u.id AS userId,
+          u.name,
+          u.email,
+          u.status AS userStatus,
+          m.status AS membershipStatus,
+          GROUP_CONCAT(DISTINCT r.id) AS roleIds,
+          GROUP_CONCAT(DISTINCT r.name) AS roleNames
+        FROM organization_memberships m
+        JOIN users u ON u.id = m.user_id
+        LEFT JOIN membership_roles mr ON mr.membership_id = m.id
+        LEFT JOIN roles r
+          ON r.id = mr.role_id AND r.organization_id = m.organization_id
+        WHERE m.organization_id = ?
+        GROUP BY m.id
+        ORDER BY u.name COLLATE NOCASE, u.email COLLATE NOCASE`,
+      )
+      .bind(organizationId)
+      .all<OrganizationMemberRow>()
+  ).results;
+
+export const findOrganizationMembershipById = (
+  organizationId: string,
+  membershipId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        m.id AS membershipId,
+        u.id AS userId,
+        u.name,
+        u.email,
+        u.status AS userStatus,
+        m.status AS membershipStatus,
+        GROUP_CONCAT(DISTINCT r.id) AS roleIds,
+        GROUP_CONCAT(DISTINCT r.name) AS roleNames
+      FROM organization_memberships m
+      JOIN users u ON u.id = m.user_id
+      LEFT JOIN membership_roles mr ON mr.membership_id = m.id
+      LEFT JOIN roles r
+        ON r.id = mr.role_id AND r.organization_id = m.organization_id
+      WHERE m.organization_id = ? AND m.id = ?
+      GROUP BY m.id`,
+    )
+    .bind(organizationId, membershipId)
+    .first<OrganizationMemberRow>();
+
+export const replaceMembershipRoles = async (
+  membershipId: string,
+  roleIds: string[],
+): Promise<void> => {
+  await d1.batch([
+    d1
+      .prepare("DELETE FROM membership_roles WHERE membership_id = ?")
+      .bind(membershipId),
+    ...roleIds.map((roleId) =>
+      d1
+        .prepare(
+          "INSERT INTO membership_roles (membership_id, role_id) VALUES (?, ?)",
+        )
+        .bind(membershipId, roleId),
+    ),
+  ]);
+};
+
+export const findSystemAdminRole = (organizationId: string) =>
+  d1
+    .prepare(
+      "SELECT id FROM roles WHERE organization_id = ? AND name = 'Admin' AND is_system = 1 AND status = 'active'",
+    )
+    .bind(organizationId)
+    .first<{ id: string }>();
+
+export const countActiveOrganizationAdmins = (organizationId: string) =>
+  d1
+    .prepare(
+      `SELECT COUNT(DISTINCT m.id) AS n
+       FROM organization_memberships m
+       JOIN users u ON u.id = m.user_id AND u.status = 'active'
+       JOIN membership_roles mr ON mr.membership_id = m.id
+       JOIN roles r
+         ON r.id = mr.role_id
+         AND r.organization_id = m.organization_id
+         AND r.name = 'Admin'
+         AND r.is_system = 1
+         AND r.status = 'active'
+       WHERE m.organization_id = ? AND m.status = 'active'`,
+    )
+    .bind(organizationId)
+    .first<{ n: number }>();
+
+export const insertOrganizationMembership = (
+  id: string,
+  organizationId: string,
+  userId: number,
+) =>
+  d1
+    .prepare(
+      "INSERT INTO organization_memberships (id, organization_id, user_id) VALUES (?, ?, ?)",
+    )
+    .bind(id, organizationId, userId)
+    .run();
+
+export const insertOrganizationInvitation = (input: {
+  id: string;
+  organizationId: string;
+  email: string;
+  tokenHash: string;
+  createdByUserId: number;
+  expiresAt: string;
+}) =>
+  d1
+    .prepare(
+      `INSERT INTO organization_invitations
+        (id, organization_id, email, token_hash, created_by_user_id, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      input.id,
+      input.organizationId,
+      input.email,
+      input.tokenHash,
+      input.createdByUserId,
+      input.expiresAt,
+    )
+    .run();
+
+export const findPendingOrganizationInvitation = (
+  tokenHash: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        i.id,
+        i.organization_id AS organizationId,
+        o.name AS organizationName,
+        i.email,
+        i.token_hash AS tokenHash,
+        i.status,
+        i.expires_at AS expiresAt,
+        i.created_at AS createdAt
+      FROM organization_invitations i
+      JOIN organizations o ON o.id = i.organization_id
+      WHERE i.token_hash = ?
+        AND i.status = 'pending'
+        AND o.status = 'active'`,
+    )
+    .bind(tokenHash)
+    .first<OrganizationInvitationRow>();
+
+export const listPendingOrganizationInvitations = async (
+  organizationId: string,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          i.id,
+          i.organization_id AS organizationId,
+          o.name AS organizationName,
+          i.email,
+          i.token_hash AS tokenHash,
+          i.status,
+          i.expires_at AS expiresAt,
+          i.created_at AS createdAt
+        FROM organization_invitations i
+        JOIN organizations o ON o.id = i.organization_id
+        WHERE i.organization_id = ?
+          AND i.status = 'pending'
+          AND i.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ORDER BY i.created_at DESC`,
+      )
+      .bind(organizationId)
+      .all<OrganizationInvitationRow>()
+  ).results;
+
+export const acceptOrganizationInvitation = (
+  invitationId: string,
+  userId: number,
+) =>
+  d1
+    .prepare(
+      `UPDATE organization_invitations
+       SET status = 'accepted',
+           accepted_by_user_id = ?,
+           accepted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       WHERE id = ? AND status = 'pending'`,
+    )
+    .bind(userId, invitationId)
+    .run();
+
+export const revokeOrganizationInvitation = (
+  organizationId: string,
+  invitationId: string,
+) =>
+  d1
+    .prepare(
+      "UPDATE organization_invitations SET status = 'revoked' WHERE organization_id = ? AND id = ? AND status = 'pending'",
+    )
+    .bind(organizationId, invitationId)
+    .run();
