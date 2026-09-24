@@ -33,6 +33,14 @@ export interface SharedPageProps {
 	errors: Record<string, string>;
 }
 
+export interface OrganizationContext {
+	id: string;
+	name: string;
+	slug: string;
+	timezone: string;
+	isAdmin: boolean;
+}
+
 /** Props for the dashboard page. */
 export interface DashboardStats {
 	userCount: number;
