@@ -1,27 +1,55 @@
 import { Type as t, type Static } from "@sinclair/typebox";
 import { Hono } from "hono";
-import { requireOrganizationAdmin, setFlash } from "../auth";
+import {
+  hashToken,
+  requireOrganizationAdmin,
+  setFlash,
+} from "../auth";
 import {
   archiveChecklistTemplate,
   checklistPublishReadiness,
+  countActiveOrganizationAdmins,
   countActiveRolesByIds,
   createChecklistTemplate,
+  findOrganizationMembership,
+  findOrganizationMembershipById,
   findOrganizationRole,
   findOrganizationRoleByName,
+  findSystemAdminRole,
+  insertOrganizationInvitation,
   insertOrganizationRole,
   listActiveOrganizationRoles,
+  listOrganizationMembers,
   listOrganizationChecklistTemplates,
   listOrganizationRoles,
+  listPendingOrganizationInvitations,
   publishChecklistTemplate,
+  replaceMembershipRoles,
+  revokeOrganizationInvitation,
   setOrganizationRoleStatus,
 } from "../db";
 import type { AppEnv } from "../inertia-middleware";
+import { sendMail } from "../mailer";
 import { validateJson } from "../validation";
 
 const roleBody = t.Object(
   {
     name: t.String({ minLength: 2, maxLength: 80 }),
     description: t.Optional(t.String({ maxLength: 500 })),
+  },
+  { additionalProperties: false },
+);
+
+const inviteBody = t.Object(
+  { email: t.String({ format: "email" }) },
+  { additionalProperties: false },
+);
+
+const membershipRolesBody = t.Object(
+  {
+    roleIds: t.Array(t.String({ minLength: 1, maxLength: 64 }), {
+      maxItems: 20,
+    }),
   },
   { additionalProperties: false },
 );
@@ -49,11 +77,18 @@ const checklistBody = t.Object(
 );
 
 type RoleBody = Static<typeof roleBody>;
+type InviteBody = Static<typeof inviteBody>;
+type MembershipRolesBody = Static<typeof membershipRolesBody>;
 type ChecklistBody = Static<typeof checklistBody>;
 
 export const ADMIN_ROLE_VALIDATION_MESSAGES: Record<string, string> = {
   "/name": "Nama role harus 2–80 karakter.",
   "/description": "Deskripsi role maksimal 500 karakter.",
+};
+
+export const ADMIN_USER_VALIDATION_MESSAGES: Record<string, string> = {
+  "/email": "Masukkan alamat email yang valid.",
+  "/roleIds": "Role yang dipilih tidak valid.",
 };
 
 export const ADMIN_CHECKLIST_VALIDATION_MESSAGES: Record<string, string> = {
@@ -65,6 +100,160 @@ export const ADMIN_CHECKLIST_VALIDATION_MESSAGES: Record<string, string> = {
 
 export const adminRoutes = () => {
   const app = new Hono<AppEnv>();
+
+  app.get("/admin/users", requireOrganizationAdmin, async (c) => {
+    const membership = c.var.organizationMembership;
+    if (!membership) return c.var.inertia.redirect("/organizations/switch");
+    const [members, roles, invitations] = await Promise.all([
+      listOrganizationMembers(membership.organizationId),
+      listActiveOrganizationRoles(membership.organizationId),
+      listPendingOrganizationInvitations(membership.organizationId),
+    ]);
+    return c.var.inertia.render("AdminUsers", {
+      members: members.map((member) => ({
+        ...member,
+        roleIds: member.roleIds ? member.roleIds.split(",") : [],
+        roleNames: member.roleNames ? member.roleNames.split(",") : [],
+      })),
+      roles,
+      invitations: invitations.map((invitation) => ({
+        id: invitation.id,
+        email: invitation.email,
+        expiresAt: invitation.expiresAt,
+        createdAt: invitation.createdAt,
+      })),
+    });
+  });
+
+  app.post(
+    "/admin/users/invite",
+    requireOrganizationAdmin,
+    validateJson(inviteBody),
+    async (c) => {
+      const membership = c.var.organizationMembership;
+      const user = c.var.user;
+      if (!membership || !user)
+        return c.var.inertia.redirect("/organizations/switch");
+      const body = c.req.valid("json") as InviteBody;
+      const email = body.email.trim().toLowerCase();
+
+      const existingUser = await findUserByEmail(email);
+      if (
+        existingUser &&
+        (await findOrganizationMembership(
+          existingUser.id,
+          membership.organizationId,
+        ))
+      )
+        return c.var.inertia.error("AdminUsers", {
+          email: "Email tersebut sudah menjadi anggota organisasi.",
+        });
+
+      const rawToken =
+        crypto.randomUUID().replaceAll("-", "") +
+        crypto.randomUUID().replaceAll("-", "");
+      const expiresAt = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      await insertOrganizationInvitation({
+        id: crypto.randomUUID(),
+        organizationId: membership.organizationId,
+        email,
+        tokenHash: await hashToken(rawToken),
+        createdByUserId: user.id,
+        expiresAt,
+      });
+
+      const link = `${new URL(c.req.url).origin}/invitations/accept?token=${rawToken}`;
+      await sendMail({
+        to: email,
+        subject: `Undangan bergabung ke ${membership.organizationName}`,
+        text:
+          `Anda diundang bergabung ke ${membership.organizationName}.\n\n` +
+          `Login menggunakan email ini, lalu buka link berikut:\n${link}\n\n` +
+          "Link berlaku 7 hari.",
+        html:
+          `<p>Anda diundang bergabung ke <strong>${membership.organizationName}</strong>.</p>` +
+          `<p>Login menggunakan email ini, lalu buka <a href="${link}">link undangan</a>.</p>` +
+          "<p>Link berlaku 7 hari.</p>",
+      });
+
+      if (c.var.sessionToken)
+        await setFlash(c.var.sessionToken, {
+          success: "Undangan berhasil dikirim.",
+        });
+      return c.var.inertia.redirect("/admin/users");
+    },
+  );
+
+  app.post(
+    "/admin/users/:membershipId/roles",
+    requireOrganizationAdmin,
+    validateJson(membershipRolesBody),
+    async (c) => {
+      const organization = c.var.organizationMembership;
+      if (!organization)
+        return c.var.inertia.redirect("/organizations/switch");
+      const target = await findOrganizationMembershipById(
+        organization.organizationId,
+        c.req.param("membershipId") ?? "",
+      );
+      if (!target) return c.var.inertia.redirect("/admin/users");
+
+      const body = c.req.valid("json") as MembershipRolesBody;
+      const roleIds = [...new Set(body.roleIds)];
+      if (
+        (await countActiveRolesByIds(organization.organizationId, roleIds)) !==
+        roleIds.length
+      ) {
+        if (c.var.sessionToken)
+          await setFlash(c.var.sessionToken, {
+            error: "Ada role yang tidak aktif atau bukan milik organisasi.",
+          });
+        return c.var.inertia.redirect("/admin/users");
+      }
+
+      const adminRole = await findSystemAdminRole(organization.organizationId);
+      const currentRoleIds = target.roleIds ? target.roleIds.split(",") : [];
+      if (
+        adminRole &&
+        currentRoleIds.includes(adminRole.id) &&
+        !roleIds.includes(adminRole.id)
+      ) {
+        const adminCount = await countActiveOrganizationAdmins(
+          organization.organizationId,
+        );
+        if ((adminCount?.n ?? 0) <= 1) {
+          if (c.var.sessionToken)
+            await setFlash(c.var.sessionToken, {
+              error: "Admin aktif terakhir tidak dapat kehilangan role Admin.",
+            });
+          return c.var.inertia.redirect("/admin/users");
+        }
+      }
+
+      await replaceMembershipRoles(target.membershipId, roleIds);
+      if (c.var.sessionToken)
+        await setFlash(c.var.sessionToken, {
+          success: "Role anggota berhasil diperbarui.",
+        });
+      return c.var.inertia.redirect("/admin/users");
+    },
+  );
+
+  app.post(
+    "/admin/users/invitations/:id/revoke",
+    requireOrganizationAdmin,
+    async (c) => {
+      const membership = c.var.organizationMembership;
+      if (!membership) return c.var.inertia.redirect("/organizations/switch");
+      await revokeOrganizationInvitation(
+        membership.organizationId,
+        c.req.param("id") ?? "",
+      );
+      return c.var.inertia.redirect("/admin/users");
+    },
+  );
 
   app.get("/admin/roles", requireOrganizationAdmin, async (c) => {
     const membership = c.var.organizationMembership;
