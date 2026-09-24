@@ -13,6 +13,7 @@ import {
   createChecklistTemplate,
   findOrganizationMembership,
   findOrganizationMembershipById,
+  findUserByEmail,
   findOrganizationRole,
   findOrganizationRoleByName,
   findSystemAdminRole,
