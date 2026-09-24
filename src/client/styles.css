@@ -1,0 +1,63 @@
+/* ---------------------------------------------------------------------------
+   Kilat starter (Tailwind template) — design tokens + keyframes only.
+   All component styling is done via Tailwind utility classes in the React
+   components. This file defines the CSS custom properties that Tailwind's
+   @theme inline (in tailwind.css) bridges to utility tokens, plus two
+   @keyframes that cannot be expressed as utilities.
+
+   Light/dark via [data-theme] on <html> (set by an inline head script to
+   avoid FOUC; toggled by the dashboard topbar). Defaults to light.
+--------------------------------------------------------------------------- */
+
+:root,
+[data-theme="light"] {
+	color-scheme: light;
+	--bg: #f6f7fb;
+	--surface: #ffffff;
+	--border: #e4e7ef;
+	--text: #1a1d27;
+	--muted: #6b7280;
+	--primary: #059669;
+	--primary-hover: #047857;
+	--primary-soft: #ecfdf5;
+	--danger: #dc2626;
+	--success: #16a34a;
+	--radius: 12px;
+	--shadow:
+		0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -8px rgb(16 24 40 / 0.12);
+}
+
+[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #0f1117;
+	--surface: #171a23;
+	--border: #2d3444;
+	--text: #e8eaf2;
+	--muted: #9aa1b2;
+	--primary: #10b981;
+	--primary-hover: #34d399;
+	--primary-soft: #06281f;
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
+
+/* --- Keyframes (cannot be Tailwind utilities) ---------------------------- */
+
+@keyframes menu-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
