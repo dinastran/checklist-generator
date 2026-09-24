@@ -6,8 +6,14 @@
  */
 import type { ComponentType } from "react";
 import Admin from "./pages/Admin";
+import AdminChecklistNew from "./pages/AdminChecklistNew";
+import AdminChecklists from "./pages/AdminChecklists";
+import AdminRoles from "./pages/AdminRoles";
+import Checklists from "./pages/Checklists";
+import ChecklistRun from "./pages/ChecklistRun";
 import Dashboard from "./pages/Dashboard";
 import ForgotPassword from "./pages/ForgotPassword";
+import History from "./pages/History";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import OrganizationNew from "./pages/OrganizationNew";
@@ -22,7 +28,13 @@ type PageModule = { default: ComponentType<any> };
 
 export const pages: Record<string, PageModule> = {
 	"./pages/Admin.tsx": { default: Admin },
+	"./pages/AdminChecklistNew.tsx": { default: AdminChecklistNew },
+	"./pages/AdminChecklists.tsx": { default: AdminChecklists },
+	"./pages/AdminRoles.tsx": { default: AdminRoles },
+	"./pages/Checklists.tsx": { default: Checklists },
+	"./pages/ChecklistRun.tsx": { default: ChecklistRun },
 	"./pages/Dashboard.tsx": { default: Dashboard },
+	"./pages/History.tsx": { default: History },
 	"./pages/ForgotPassword.tsx": { default: ForgotPassword },
 	"./pages/Login.tsx": { default: Login },
 	"./pages/NotFound.tsx": { default: NotFound },
