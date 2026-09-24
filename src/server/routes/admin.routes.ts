@@ -112,7 +112,7 @@ export const adminRoutes = () => {
       if (!membership) return c.var.inertia.redirect("/organizations/switch");
       const role = await findOrganizationRole(
         membership.organizationId,
-        c.req.param("id"),
+        c.req.param("id") ?? "",
       );
       if (!role || role.isSystem)
         return c.var.inertia.redirect("/admin/roles");
@@ -133,7 +133,7 @@ export const adminRoutes = () => {
       if (!membership) return c.var.inertia.redirect("/organizations/switch");
       const role = await findOrganizationRole(
         membership.organizationId,
-        c.req.param("id"),
+        c.req.param("id") ?? "",
       );
       if (!role || role.isSystem)
         return c.var.inertia.redirect("/admin/roles");
@@ -222,7 +222,7 @@ export const adminRoutes = () => {
     async (c) => {
       const membership = c.var.organizationMembership;
       if (!membership) return c.var.inertia.redirect("/organizations/switch");
-      const templateId = c.req.param("id");
+      const templateId = c.req.param("id") ?? "";
       const readiness = await checklistPublishReadiness(
         membership.organizationId,
         templateId,
@@ -257,7 +257,7 @@ export const adminRoutes = () => {
       if (!membership) return c.var.inertia.redirect("/organizations/switch");
       await archiveChecklistTemplate(
         membership.organizationId,
-        c.req.param("id"),
+        c.req.param("id") ?? "",
       );
       if (c.var.sessionToken)
         await setFlash(c.var.sessionToken, {
