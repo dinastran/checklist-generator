@@ -162,7 +162,11 @@ export const authRoutes = () => {
     const body = c.req.valid("json") as LoginBody;
     const page = c.var.inertia;
     const user = await findUserByEmail(body.email);
-    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
+    if (
+      !user ||
+      user.status !== "active" ||
+      !(await verifyPassword(body.password, user.passwordHash))
+    ) {
       return page.error("Login", {
         email: "These credentials do not match our records.",
       });
