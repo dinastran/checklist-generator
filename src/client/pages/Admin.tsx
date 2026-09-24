@@ -28,6 +28,7 @@ export default function Admin({ users }: { users: Paginated<User> }) {
 			</p>
 
 			<div className="flex gap-2 flex-wrap mb-5">
+				<Link href="/admin/users" className={btnGhost}>Kelola anggota</Link>
 				<Link href="/admin/roles" className={btnGhost}>Kelola role</Link>
 				<Link href="/admin/checklists" className={btnGhost}>Kelola checklist</Link>
 			</div>
