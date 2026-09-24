@@ -24,9 +24,11 @@ import {
   adminRoutes,
   ADMIN_CHECKLIST_VALIDATION_MESSAGES,
   ADMIN_ROLE_VALIDATION_MESSAGES,
+  ADMIN_USER_VALIDATION_MESSAGES,
 } from "./routes/admin.routes";
 import { avatarRoutes } from "./routes/avatars.routes";
 import { checklistRoutes } from "./routes/checklists.routes";
+import { invitationRoutes } from "./routes/invitations.routes";
 import { googleOauthRoutes } from "./routes/google-oauth.routes";
 import { pageRoutes } from "./routes/pages.routes";
 import {
@@ -54,6 +56,9 @@ const COMPONENT_BY_PATH: Record<string, string> = {
   "/organizations/switch": "OrganizationSwitch",
   "/admin/roles": "AdminRoles",
   "/admin/checklists": "AdminChecklistNew",
+  "/admin/users": "AdminUsers",
+  "/admin/users/invite": "AdminUsers",
+  "/invitations/accept": "InvitationAccept",
 };
 
 const VALIDATION_MESSAGES_BY_PATH: Record<
@@ -70,6 +75,7 @@ const VALIDATION_MESSAGES_BY_PATH: Record<
   "/organizations/switch": ORGANIZATION_VALIDATION_MESSAGES,
   "/admin/roles": ADMIN_ROLE_VALIDATION_MESSAGES,
   "/admin/checklists": ADMIN_CHECKLIST_VALIDATION_MESSAGES,
+  "/admin/users/invite": ADMIN_USER_VALIDATION_MESSAGES,
 };
 
 /**
@@ -199,6 +205,7 @@ export function createApp(assets: InertiaAssets) {
   app.route("/", authRoutes());
   app.route("/", adminRoutes());
   app.route("/", checklistRoutes());
+  app.route("/", invitationRoutes());
   app.route("/", avatarRoutes());
   app.route("/", googleOauthRoutes());
   app.route("/", pageRoutes());
