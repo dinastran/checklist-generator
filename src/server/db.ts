@@ -555,3 +555,680 @@ export const verifyUserEmail = (userId: number) =>
     .prepare("UPDATE users SET email_verified = 1 WHERE id = ?")
     .bind(userId)
     .run();
+
+
+// ---------------------------------------------------------------------------
+// Organization roles
+// ---------------------------------------------------------------------------
+
+export interface OrganizationRoleRow {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: number;
+  status: "active" | "inactive";
+  userCount: number;
+  templateCount: number;
+}
+
+export const listOrganizationRoles = async (organizationId: string) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          r.id,
+          r.name,
+          r.description,
+          r.is_system AS isSystem,
+          r.status,
+          COUNT(DISTINCT mr.membership_id) AS userCount,
+          COUNT(DISTINCT ctr.template_id) AS templateCount
+        FROM roles r
+        LEFT JOIN membership_roles mr ON mr.role_id = r.id
+        LEFT JOIN checklist_template_roles ctr ON ctr.role_id = r.id
+        WHERE r.organization_id = ?
+        GROUP BY r.id
+        ORDER BY r.is_system DESC, r.name COLLATE NOCASE`,
+      )
+      .bind(organizationId)
+      .all<OrganizationRoleRow>()
+  ).results;
+
+export const listActiveOrganizationRoles = async (organizationId: string) =>
+  (
+    await d1
+      .prepare(
+        "SELECT id, name, description, is_system AS isSystem, status, 0 AS userCount, 0 AS templateCount FROM roles WHERE organization_id = ? AND status = 'active' ORDER BY name COLLATE NOCASE",
+      )
+      .bind(organizationId)
+      .all<OrganizationRoleRow>()
+  ).results;
+
+export const findOrganizationRoleByName = (
+  organizationId: string,
+  name: string,
+) =>
+  d1
+    .prepare(
+      "SELECT id, name, description, is_system AS isSystem, status, 0 AS userCount, 0 AS templateCount FROM roles WHERE organization_id = ? AND name = ? COLLATE NOCASE",
+    )
+    .bind(organizationId, name)
+    .first<OrganizationRoleRow>();
+
+export const findOrganizationRole = (
+  organizationId: string,
+  roleId: string,
+) =>
+  d1
+    .prepare(
+      "SELECT id, name, description, is_system AS isSystem, status, 0 AS userCount, 0 AS templateCount FROM roles WHERE organization_id = ? AND id = ?",
+    )
+    .bind(organizationId, roleId)
+    .first<OrganizationRoleRow>();
+
+export const insertOrganizationRole = (
+  id: string,
+  organizationId: string,
+  name: string,
+  description: string | null,
+) =>
+  d1
+    .prepare(
+      "INSERT INTO roles (id, organization_id, name, description) VALUES (?, ?, ?, ?)",
+    )
+    .bind(id, organizationId, name, description)
+    .run();
+
+export const updateOrganizationRole = (
+  organizationId: string,
+  roleId: string,
+  name: string,
+  description: string | null,
+) =>
+  d1
+    .prepare(
+      "UPDATE roles SET name = ?, description = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE organization_id = ? AND id = ? AND is_system = 0",
+    )
+    .bind(name, description, organizationId, roleId)
+    .run();
+
+export const setOrganizationRoleStatus = (
+  organizationId: string,
+  roleId: string,
+  status: "active" | "inactive",
+) =>
+  d1
+    .prepare(
+      "UPDATE roles SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE organization_id = ? AND id = ? AND is_system = 0",
+    )
+    .bind(status, organizationId, roleId)
+    .run();
+
+export const countActiveRolesByIds = async (
+  organizationId: string,
+  roleIds: string[],
+): Promise<number> => {
+  if (roleIds.length === 0) return 0;
+  const placeholders = roleIds.map(() => "?").join(", ");
+  const row = await d1
+    .prepare(
+      `SELECT COUNT(*) AS n FROM roles WHERE organization_id = ? AND status = 'active' AND id IN (${placeholders})`,
+    )
+    .bind(organizationId, ...roleIds)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+};
+
+// ---------------------------------------------------------------------------
+// Checklist templates and execution
+// ---------------------------------------------------------------------------
+
+export interface ChecklistTemplateSummaryRow {
+  id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "published" | "archived";
+  version: number;
+  itemCount: number;
+  roleCount: number;
+  updatedAt: string;
+}
+
+export interface ChecklistTemplateRow {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "published" | "archived";
+  version: number;
+  createdByUserId: number;
+  publishedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChecklistItemRow {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  isActive: number;
+}
+
+export interface CreateChecklistTemplateInput {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  createdByUserId: number;
+  roleIds: string[];
+  items: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    position: number;
+  }>;
+}
+
+export async function createChecklistTemplate(
+  input: CreateChecklistTemplateInput,
+): Promise<void> {
+  const statements = [
+    d1
+      .prepare(
+        "INSERT INTO checklist_templates (id, organization_id, name, description, created_by_user_id) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(
+        input.id,
+        input.organizationId,
+        input.name,
+        input.description,
+        input.createdByUserId,
+      ),
+    ...input.roleIds.map((roleId) =>
+      d1
+        .prepare(
+          "INSERT INTO checklist_template_roles (template_id, role_id) VALUES (?, ?)",
+        )
+        .bind(input.id, roleId),
+    ),
+    ...input.items.map((item) =>
+      d1
+        .prepare(
+          "INSERT INTO checklist_items (id, organization_id, template_id, title, description, position) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          item.id,
+          input.organizationId,
+          input.id,
+          item.title,
+          item.description,
+          item.position,
+        ),
+    ),
+  ];
+  await d1.batch(statements);
+}
+
+export const listOrganizationChecklistTemplates = async (
+  organizationId: string,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          t.id,
+          t.name,
+          t.description,
+          t.status,
+          t.version,
+          COUNT(DISTINCT i.id) AS itemCount,
+          COUNT(DISTINCT tr.role_id) AS roleCount,
+          t.updated_at AS updatedAt
+        FROM checklist_templates t
+        LEFT JOIN checklist_items i
+          ON i.template_id = t.id AND i.is_active = 1
+        LEFT JOIN checklist_template_roles tr ON tr.template_id = t.id
+        WHERE t.organization_id = ?
+        GROUP BY t.id
+        ORDER BY t.updated_at DESC`,
+      )
+      .bind(organizationId)
+      .all<ChecklistTemplateSummaryRow>()
+  ).results;
+
+export const findOrganizationChecklistTemplate = (
+  organizationId: string,
+  templateId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        id,
+        organization_id AS organizationId,
+        name,
+        description,
+        status,
+        version,
+        created_by_user_id AS createdByUserId,
+        published_at AS publishedAt,
+        archived_at AS archivedAt,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM checklist_templates
+      WHERE organization_id = ? AND id = ?`,
+    )
+    .bind(organizationId, templateId)
+    .first<ChecklistTemplateRow>();
+
+export const listChecklistTemplateItems = async (
+  organizationId: string,
+  templateId: string,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT id, title, description, position, is_active AS isActive
+         FROM checklist_items
+         WHERE organization_id = ? AND template_id = ?
+         ORDER BY position`,
+      )
+      .bind(organizationId, templateId)
+      .all<ChecklistItemRow>()
+  ).results;
+
+export const listChecklistTemplateRoleIds = async (
+  organizationId: string,
+  templateId: string,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT tr.role_id AS roleId
+         FROM checklist_template_roles tr
+         JOIN roles r ON r.id = tr.role_id
+         WHERE tr.template_id = ? AND r.organization_id = ?`,
+      )
+      .bind(templateId, organizationId)
+      .all<{ roleId: string }>()
+  ).results;
+
+export const checklistPublishReadiness = (
+  organizationId: string,
+  templateId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        t.status,
+        (SELECT COUNT(*) FROM checklist_items i WHERE i.template_id = t.id AND i.organization_id = t.organization_id AND i.is_active = 1) AS activeItems,
+        (SELECT COUNT(*) FROM checklist_template_roles tr JOIN roles r ON r.id = tr.role_id WHERE tr.template_id = t.id AND r.organization_id = t.organization_id AND r.status = 'active') AS activeRoles
+      FROM checklist_templates t
+      WHERE t.organization_id = ? AND t.id = ?`,
+    )
+    .bind(organizationId, templateId)
+    .first<{
+      status: "draft" | "published" | "archived";
+      activeItems: number;
+      activeRoles: number;
+    }>();
+
+export const publishChecklistTemplate = (
+  organizationId: string,
+  templateId: string,
+) =>
+  d1
+    .prepare(
+      "UPDATE checklist_templates SET status = 'published', published_at = COALESCE(published_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE organization_id = ? AND id = ? AND status = 'draft'",
+    )
+    .bind(organizationId, templateId)
+    .run();
+
+export const archiveChecklistTemplate = (
+  organizationId: string,
+  templateId: string,
+) =>
+  d1
+    .prepare(
+      "UPDATE checklist_templates SET status = 'archived', archived_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE organization_id = ? AND id = ? AND status != 'archived'",
+    )
+    .bind(organizationId, templateId)
+    .run();
+
+export interface AvailableChecklistTemplateRow {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number;
+  roleNames: string;
+}
+
+export const listAvailableChecklistTemplates = async (
+  organizationId: string,
+  userId: number,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          t.id,
+          t.name,
+          t.description,
+          t.version,
+          GROUP_CONCAT(DISTINCT r.name) AS roleNames
+        FROM organization_memberships m
+        JOIN membership_roles mr ON mr.membership_id = m.id
+        JOIN roles r
+          ON r.id = mr.role_id
+          AND r.organization_id = m.organization_id
+          AND r.status = 'active'
+        JOIN checklist_template_roles tr ON tr.role_id = r.id
+        JOIN checklist_templates t
+          ON t.id = tr.template_id
+          AND t.organization_id = m.organization_id
+          AND t.status = 'published'
+        WHERE m.organization_id = ?
+          AND m.user_id = ?
+          AND m.status = 'active'
+        GROUP BY t.id
+        ORDER BY t.name COLLATE NOCASE`,
+      )
+      .bind(organizationId, userId)
+      .all<AvailableChecklistTemplateRow>()
+  ).results;
+
+export const findAvailableChecklistTemplate = (
+  organizationId: string,
+  userId: number,
+  templateId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        t.id,
+        t.name,
+        t.description,
+        t.version,
+        GROUP_CONCAT(DISTINCT r.name) AS roleNames
+      FROM organization_memberships m
+      JOIN membership_roles mr ON mr.membership_id = m.id
+      JOIN roles r
+        ON r.id = mr.role_id
+        AND r.organization_id = m.organization_id
+        AND r.status = 'active'
+      JOIN checklist_template_roles tr ON tr.role_id = r.id
+      JOIN checklist_templates t
+        ON t.id = tr.template_id
+        AND t.organization_id = m.organization_id
+        AND t.status = 'published'
+      WHERE m.organization_id = ?
+        AND m.user_id = ?
+        AND m.status = 'active'
+        AND t.id = ?
+      GROUP BY t.id`,
+    )
+    .bind(organizationId, userId, templateId)
+    .first<AvailableChecklistTemplateRow>();
+
+export interface ChecklistRunRow {
+  id: string;
+  organizationId: string;
+  templateId: string;
+  templateVersion: number;
+  userId: number;
+  sourceKey: string;
+  templateName: string;
+  roleName: string | null;
+  status: "in_progress" | "completed";
+  progressPercent: number;
+  startedAt: string;
+  lastActivityAt: string;
+  completedAt: string | null;
+}
+
+export interface ChecklistRunItemRow {
+  id: string;
+  title: string;
+  description: string | null;
+  position: number;
+  completed: number;
+  completedAt: string | null;
+}
+
+export const findChecklistRunBySourceKey = (
+  organizationId: string,
+  userId: number,
+  sourceKey: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        id,
+        organization_id AS organizationId,
+        template_id AS templateId,
+        template_version AS templateVersion,
+        user_id AS userId,
+        source_key AS sourceKey,
+        template_name_snapshot AS templateName,
+        role_name_snapshot AS roleName,
+        status,
+        progress_percent AS progressPercent,
+        started_at AS startedAt,
+        last_activity_at AS lastActivityAt,
+        completed_at AS completedAt
+      FROM checklist_runs
+      WHERE organization_id = ? AND user_id = ? AND source_key = ?`,
+    )
+    .bind(organizationId, userId, sourceKey)
+    .first<ChecklistRunRow>();
+
+export async function createManualChecklistRun(input: {
+  id: string;
+  organizationId: string;
+  template: AvailableChecklistTemplateRow;
+  userId: number;
+  sourceKey: string;
+  items: ChecklistItemRow[];
+}): Promise<ChecklistRunRow | null> {
+  const statements = [
+    d1
+      .prepare(
+        `INSERT OR IGNORE INTO checklist_runs
+          (id, organization_id, template_id, template_version, user_id, source_key, template_name_snapshot, role_name_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        input.id,
+        input.organizationId,
+        input.template.id,
+        input.template.version,
+        input.userId,
+        input.sourceKey,
+        input.template.name,
+        input.template.roleNames,
+      ),
+    ...input.items
+      .filter((item) => item.isActive === 1)
+      .map((item) =>
+        d1
+          .prepare(
+            `INSERT INTO checklist_run_items
+              (id, run_id, source_item_id, title, description, position)
+             SELECT ?, ?, ?, ?, ?, ?
+             WHERE EXISTS (SELECT 1 FROM checklist_runs WHERE id = ?)`,
+          )
+          .bind(
+            crypto.randomUUID(),
+            input.id,
+            item.id,
+            item.title,
+            item.description,
+            item.position,
+            input.id,
+          ),
+      ),
+  ];
+  await d1.batch(statements);
+  return findChecklistRunBySourceKey(
+    input.organizationId,
+    input.userId,
+    input.sourceKey,
+  );
+}
+
+export const findChecklistRunForUser = (
+  organizationId: string,
+  userId: number,
+  runId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        id,
+        organization_id AS organizationId,
+        template_id AS templateId,
+        template_version AS templateVersion,
+        user_id AS userId,
+        source_key AS sourceKey,
+        template_name_snapshot AS templateName,
+        role_name_snapshot AS roleName,
+        status,
+        progress_percent AS progressPercent,
+        started_at AS startedAt,
+        last_activity_at AS lastActivityAt,
+        completed_at AS completedAt
+      FROM checklist_runs
+      WHERE organization_id = ? AND user_id = ? AND id = ?`,
+    )
+    .bind(organizationId, userId, runId)
+    .first<ChecklistRunRow>();
+
+export const listChecklistRunItems = async (
+  organizationId: string,
+  userId: number,
+  runId: string,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          ri.id,
+          ri.title,
+          ri.description,
+          ri.position,
+          CASE WHEN c.run_item_id IS NULL THEN 0 ELSE 1 END AS completed,
+          c.completed_at AS completedAt
+        FROM checklist_runs r
+        JOIN checklist_run_items ri ON ri.run_id = r.id
+        LEFT JOIN checklist_item_completions c
+          ON c.run_id = r.id AND c.run_item_id = ri.id
+        WHERE r.organization_id = ? AND r.user_id = ? AND r.id = ?
+        ORDER BY ri.position`,
+      )
+      .bind(organizationId, userId, runId)
+      .all<ChecklistRunItemRow>()
+  ).results;
+
+export const findChecklistRunItemForUser = (
+  organizationId: string,
+  userId: number,
+  runId: string,
+  runItemId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT ri.id
+       FROM checklist_runs r
+       JOIN checklist_run_items ri ON ri.run_id = r.id
+       WHERE r.organization_id = ? AND r.user_id = ? AND r.id = ? AND ri.id = ?`,
+    )
+    .bind(organizationId, userId, runId, runItemId)
+    .first<{ id: string }>();
+
+export async function setChecklistRunItemCompletion(input: {
+  organizationId: string;
+  userId: number;
+  runId: string;
+  runItemId: string;
+  completed: boolean;
+}): Promise<void> {
+  const completionStatement = input.completed
+    ? d1
+        .prepare(
+          `INSERT INTO checklist_item_completions
+            (run_id, run_item_id, completed_by_user_id, updated_by_user_id)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(run_id, run_item_id) DO UPDATE SET
+             completed_by_user_id = excluded.completed_by_user_id,
+             completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+             updated_by_user_id = excluded.updated_by_user_id,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+        )
+        .bind(input.runId, input.runItemId, input.userId, input.userId)
+    : d1
+        .prepare(
+          "DELETE FROM checklist_item_completions WHERE run_id = ? AND run_item_id = ?",
+        )
+        .bind(input.runId, input.runItemId);
+
+  const totalSql =
+    "(SELECT COUNT(*) FROM checklist_run_items ri WHERE ri.run_id = checklist_runs.id)";
+  const completedSql =
+    "(SELECT COUNT(*) FROM checklist_item_completions c WHERE c.run_id = checklist_runs.id)";
+  await d1.batch([
+    completionStatement,
+    d1
+      .prepare(
+        `UPDATE checklist_runs
+         SET progress_percent = CASE
+               WHEN ${totalSql} = 0 THEN 0
+               ELSE CAST((${completedSql} * 100) / ${totalSql} AS INTEGER)
+             END,
+             status = CASE
+               WHEN ${totalSql} > 0 AND ${completedSql} >= ${totalSql}
+                 THEN 'completed'
+               ELSE 'in_progress'
+             END,
+             completed_at = CASE
+               WHEN ${totalSql} > 0 AND ${completedSql} >= ${totalSql}
+                 THEN COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+               ELSE NULL
+             END,
+             last_activity_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ? AND organization_id = ? AND user_id = ?`,
+      )
+      .bind(input.runId, input.organizationId, input.userId),
+  ]);
+}
+
+export const listUserChecklistHistory = async (
+  organizationId: string,
+  userId: number,
+  limit = 50,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          id,
+          organization_id AS organizationId,
+          template_id AS templateId,
+          template_version AS templateVersion,
+          user_id AS userId,
+          source_key AS sourceKey,
+          template_name_snapshot AS templateName,
+          role_name_snapshot AS roleName,
+          status,
+          progress_percent AS progressPercent,
+          started_at AS startedAt,
+          last_activity_at AS lastActivityAt,
+          completed_at AS completedAt
+        FROM checklist_runs
+        WHERE organization_id = ? AND user_id = ?
+        ORDER BY last_activity_at DESC
+        LIMIT ?`,
+      )
+      .bind(organizationId, userId, limit)
+      .all<ChecklistRunRow>()
+  ).results;
