@@ -27,6 +27,11 @@ export default function Admin({ users }: { users: Paginated<User> }) {
 				{users.meta.total} anggota aktif, halaman {currentPage} dari {lastPage}.
 			</p>
 
+			<div className="flex gap-2 flex-wrap mb-5">
+				<Link href="/admin/roles" className={btnGhost}>Kelola role</Link>
+				<Link href="/admin/checklists" className={btnGhost}>Kelola checklist</Link>
+			</div>
+
 			<section className="bg-surface border border-border rounded-radius p-6">
 				<div className="overflow-x-auto">
 					<table className="w-full border-collapse text-sm">
