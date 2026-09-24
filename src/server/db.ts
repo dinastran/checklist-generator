@@ -31,6 +31,7 @@ export interface UserRow {
   googleId: string | null;
   avatarUrl: string | null;
   emailVerified: number;
+  status: "active" | "inactive";
   createdAt: string;
 }
 
@@ -70,6 +71,7 @@ export const toPublicUser = (row: UserRow): PublicUser => ({
   role: row.role,
   avatarUrl: row.avatarUrl,
   emailVerified: row.emailVerified,
+  status: row.status,
   createdAt: row.createdAt,
 });
 
@@ -114,7 +116,7 @@ export const createGoogleUser = (
 export const findUserByEmail = (email: string) =>
   d1
     .prepare(
-      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, created_at AS createdAt FROM users WHERE email = ?",
+      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, status, created_at AS createdAt FROM users WHERE email = ?",
     )
     .bind(email)
     .first<UserRow>();
@@ -122,7 +124,7 @@ export const findUserByEmail = (email: string) =>
 export const findUserById = (id: number) =>
   d1
     .prepare(
-      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, created_at AS createdAt FROM users WHERE id = ?",
+      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, status, created_at AS createdAt FROM users WHERE id = ?",
     )
     .bind(id)
     .first<UserRow>();
@@ -130,7 +132,7 @@ export const findUserById = (id: number) =>
 export const findUserByGoogleId = (googleId: string) =>
   d1
     .prepare(
-      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, created_at AS createdAt FROM users WHERE google_id = ?",
+      "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, status, created_at AS createdAt FROM users WHERE google_id = ?",
     )
     .bind(googleId)
     .first<UserRow>();
@@ -166,7 +168,7 @@ export const listUsers = async (limit: number, offset: number) =>
   (
     await d1
       .prepare(
-        "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, created_at AS createdAt FROM users ORDER BY id DESC LIMIT ? OFFSET ?",
+        "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, status, created_at AS createdAt FROM users ORDER BY id DESC LIMIT ? OFFSET ?",
       )
       .bind(limit, offset)
       .all<UserRow>()
@@ -176,7 +178,7 @@ export const recentUsers = async (limit: number) =>
   (
     await d1
       .prepare(
-        "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, created_at AS createdAt FROM users ORDER BY id DESC LIMIT ?",
+        "SELECT id, name, email, password_hash AS passwordHash, role, google_id AS googleId, avatar_url AS avatarUrl, email_verified AS emailVerified, status, created_at AS createdAt FROM users ORDER BY id DESC LIMIT ?",
       )
       .bind(limit)
       .all<UserRow>()
@@ -462,6 +464,7 @@ export const listOrganizationUsers = async (
           u.google_id AS googleId,
           u.avatar_url AS avatarUrl,
           u.email_verified AS emailVerified,
+          u.status,
           u.created_at AS createdAt
         FROM organization_memberships m
         JOIN users u ON u.id = m.user_id
@@ -489,6 +492,7 @@ export const recentOrganizationUsers = async (
           u.google_id AS googleId,
           u.avatar_url AS avatarUrl,
           u.email_verified AS emailVerified,
+          u.status,
           u.created_at AS createdAt
         FROM organization_memberships m
         JOIN users u ON u.id = m.user_id
