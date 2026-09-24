@@ -20,7 +20,13 @@ import { Inertia, type InertiaAssets } from "./inertia";
 import { inertiaMiddleware, type AppEnv } from "./inertia-middleware";
 import { logError, requestLogger } from "./logger";
 import { authRoutes, VALIDATION_MESSAGES } from "./routes/auth.routes";
+import {
+  adminRoutes,
+  ADMIN_CHECKLIST_VALIDATION_MESSAGES,
+  ADMIN_ROLE_VALIDATION_MESSAGES,
+} from "./routes/admin.routes";
 import { avatarRoutes } from "./routes/avatars.routes";
+import { checklistRoutes } from "./routes/checklists.routes";
 import { googleOauthRoutes } from "./routes/google-oauth.routes";
 import { pageRoutes } from "./routes/pages.routes";
 import {
@@ -46,6 +52,8 @@ const COMPONENT_BY_PATH: Record<string, string> = {
   "/profile/password": "Profile",
   "/organizations/new": "OrganizationNew",
   "/organizations/switch": "OrganizationSwitch",
+  "/admin/roles": "AdminRoles",
+  "/admin/checklists": "AdminChecklistNew",
 };
 
 const VALIDATION_MESSAGES_BY_PATH: Record<
@@ -60,6 +68,8 @@ const VALIDATION_MESSAGES_BY_PATH: Record<
   "/profile/password": PROFILE_VALIDATION_MESSAGES,
   "/organizations/new": ORGANIZATION_VALIDATION_MESSAGES,
   "/organizations/switch": ORGANIZATION_VALIDATION_MESSAGES,
+  "/admin/roles": ADMIN_ROLE_VALIDATION_MESSAGES,
+  "/admin/checklists": ADMIN_CHECKLIST_VALIDATION_MESSAGES,
 };
 
 /**
@@ -187,6 +197,8 @@ export function createApp(assets: InertiaAssets) {
   app.get("/.well-known/*", () => new Response(null, { status: 404 }));
 
   app.route("/", authRoutes());
+  app.route("/", adminRoutes());
+  app.route("/", checklistRoutes());
   app.route("/", avatarRoutes());
   app.route("/", googleOauthRoutes());
   app.route("/", pageRoutes());
