@@ -1,21 +1,6 @@
 -- 0009_scheduler_ai.sql
 -- Recurring schedule metadata, execution observability, AI keys and imports.
 
-CREATE TABLE checklist_schedules (
-  id TEXT PRIMARY KEY,
-  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  template_id TEXT NOT NULL REFERENCES checklist_templates(id) ON DELETE CASCADE,
-  schedule_type TEXT NOT NULL
-    CHECK (schedule_type IN ('daily', 'weekly', 'monthly', 'custom')),
-  rule TEXT,
-  timezone TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'paused')),
-  created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
 CREATE TABLE schedule_executions (
   id TEXT PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -57,10 +42,6 @@ CREATE TABLE ai_imports (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_schedules_org_status
-  ON checklist_schedules(organization_id, status);
-CREATE INDEX idx_schedules_template
-  ON checklist_schedules(template_id);
 CREATE INDEX idx_schedule_executions_org
   ON schedule_executions(organization_id, started_at);
 CREATE INDEX idx_api_keys_org_status
