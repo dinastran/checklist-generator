@@ -84,9 +84,78 @@ async function registerUser(
 		body: { name: "Test User", email, password },
 	});
 	expect(res.status).toBe(303);
+	expect(new URL(res.headers.get("location")!).pathname).toBe(
+		"/organizations/new",
+	);
 	const cookie = sessionCookie(res);
 	expect(cookie).not.toBe("");
+
+	const organization = await call("/organizations/new", {
+		method: "POST",
+		headers: { ...xhr, cookie },
+		body: { name: `Organization ${email}` },
+	});
+	expect(organization.status).toBe(303);
+	expect(new URL(organization.headers.get("location")!).pathname).toBe(
+		"/dashboard",
+	);
 	return cookie;
+}
+
+async function createOrganizationMember(
+	ownerEmail: string,
+	memberEmail: string,
+): Promise<{ cookie: string; organizationId: string }> {
+	const {
+		createUser,
+		findUserByEmail,
+		listOrganizationsForUser,
+	} = await import("../src/server/db");
+	const { hashPassword } = await import("../src/server/auth");
+	const owner = await findUserByEmail(ownerEmail);
+	expect(owner).not.toBeNull();
+	const organizations = await listOrganizationsForUser(owner!.id);
+	const organization = organizations[0];
+	expect(organization).toBeTruthy();
+
+	const passwordHash = await hashPassword("password123");
+	const member = await createUser("Team Member", memberEmail, passwordHash);
+	expect(member).not.toBeNull();
+
+	const membershipId = crypto.randomUUID();
+	const roleId = crypto.randomUUID();
+	d1.__db
+		.prepare(
+			"INSERT INTO organization_memberships (id, organization_id, user_id) VALUES (?, ?, ?)",
+		)
+		.run(membershipId, organization!.organizationId, member!.id);
+	d1.__db
+		.prepare(
+			"INSERT INTO roles (id, organization_id, name, description) VALUES (?, ?, ?, ?)",
+		)
+		.run(
+			roleId,
+			organization!.organizationId,
+			`Member ${member!.id}`,
+			"Operational member",
+		);
+	d1.__db
+		.prepare(
+			"INSERT INTO membership_roles (membership_id, role_id) VALUES (?, ?)",
+		)
+		.run(membershipId, roleId);
+
+	const login = await call("/login", {
+		method: "POST",
+		headers: xhr,
+		body: { email: memberEmail, password: "password123" },
+	});
+	expect(login.status).toBe(303);
+	expect(new URL(login.headers.get("location")!).pathname).toBe("/dashboard");
+	return {
+		cookie: sessionCookie(login),
+		organizationId: organization!.organizationId,
+	};
 }
 
 describe("auth basics", () => {
@@ -107,7 +176,9 @@ describe("auth basics", () => {
 			},
 		});
 		expect(res.status).toBe(303);
-		expect(new URL(res.headers.get("location")!).pathname).toBe("/dashboard");
+		expect(new URL(res.headers.get("location")!).pathname).toBe(
+			"/organizations/new",
+		);
 		expect(res.headers.get("set-cookie")).toContain("session=");
 		expect(res.headers.get("set-cookie")).toContain("HttpOnly");
 	});
@@ -121,7 +192,7 @@ describe("auth basics", () => {
 		expect(res.status).toBe(422);
 		const data = await page(res);
 		expect(data.component).toBe("Register");
-		expect(data.props.errors.name).toBe("Name must be at least 2 characters.");
+		expect(data.props.errors.name).toBe("Name must be 2–50 characters.");
 		expect(data.props.errors.email).toBe("Please enter a valid email address.");
 	});
 
@@ -270,27 +341,22 @@ describe("inertia protocol", () => {
 	});
 });
 
-describe("roles & admin", () => {
-	it("blocks non-admins from /admin", async () => {
-		const cookie = await registerUser("normal@example.com");
-		const res = await call("/admin", { headers: { cookie } });
+describe("organization roles & isolation", () => {
+	it("blocks organization non-admins from /admin", async () => {
+		await registerUser("owner-normal@example.com");
+		const member = await createOrganizationMember(
+			"owner-normal@example.com",
+			"normal@example.com",
+		);
+		const res = await call("/admin", { headers: { cookie: member.cookie } });
 		expect(res.status).toBe(302);
 		expect(new URL(res.headers.get("location")!).pathname).toBe("/dashboard");
 	});
 
-	it("serves paginated users to admins", async () => {
-		const { createUserWithRole } = await import("../src/server/db");
-		const { hashPassword } = await import("../src/server/auth");
-		const hash = await hashPassword("password123");
-		await createUserWithRole("Boss", "boss@example.com", hash, "admin");
-		const cookie = await registerUser("filler@example.com");
-
-		const login = await call("/login", {
-			method: "POST",
-			headers: xhr,
-			body: { email: "boss@example.com", password: "password123" },
-		});
-		const adminCookie = sessionCookie(login);
+	it("serves only active-organization users to organization admins", async () => {
+		const adminCookie = await registerUser("boss@example.com");
+		await createOrganizationMember("boss@example.com", "filler@example.com");
+		await registerUser("other-tenant@example.com");
 
 		const res = await call("/admin", {
 			headers: { cookie: adminCookie, ...xhr },
@@ -298,17 +364,44 @@ describe("roles & admin", () => {
 		expect(res.status).toBe(200);
 		const data = await page(res);
 		expect(data.component).toBe("Admin");
-		expect(data.props.users.meta.total).toBeGreaterThanOrEqual(2);
+		expect(data.props.users.meta.total).toBe(2);
 		expect(data.props.users.meta.currentPage).toBe(1);
 		expect(
 			data.props.users.data.some(
 				(u: { email: string }) => u.email === "boss@example.com",
 			),
 		).toBe(true);
+		expect(
+			data.props.users.data.some(
+				(u: { email: string }) => u.email === "filler@example.com",
+			),
+		).toBe(true);
+		expect(
+			data.props.users.data.some(
+				(u: { email: string }) => u.email === "other-tenant@example.com",
+			),
+		).toBe(false);
+	});
 
-		// non-admin cookie is still bounced
-		const blocked = await call("/admin", { headers: { cookie } });
-		expect(blocked.status).toBe(302);
+	it("rejects switching to an organization without membership", async () => {
+		const firstCookie = await registerUser("switch-a@example.com");
+		await registerUser("switch-b@example.com");
+		const { findUserByEmail, listOrganizationsForUser } = await import(
+			"../src/server/db"
+		);
+		const secondUser = await findUserByEmail("switch-b@example.com");
+		const secondOrganizations = await listOrganizationsForUser(secondUser!.id);
+		const foreignOrganization = secondOrganizations[0]!;
+
+		const res = await call("/organizations/switch", {
+			method: "POST",
+			headers: { ...xhr, cookie: firstCookie },
+			body: { organizationId: foreignOrganization.organizationId },
+		});
+		expect(res.status).toBe(422);
+		expect((await page(res)).props.errors.organizationId).toContain(
+			"tidak tersedia",
+		);
 	});
 });
 
