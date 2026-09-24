@@ -78,7 +78,14 @@ export default function ChecklistRun({
 						<span>{run.status === "completed" ? "Selesai" : "Sedang dikerjakan"}</span>
 						<strong>{run.progressPercent}%</strong>
 					</div>
-					<div className="h-2 rounded-full bg-border overflow-hidden" aria-label={`Progres ${run.progressPercent}%`}>
+					<div
+						className="h-2 rounded-full bg-border overflow-hidden"
+						role="progressbar"
+						aria-label="Progres checklist"
+						aria-valuemin={0}
+						aria-valuemax={100}
+						aria-valuenow={run.progressPercent}
+					>
 						<div className="h-full bg-primary transition-[width]" style={{ width: `${run.progressPercent}%` }} />
 					</div>
 				</div>
