@@ -17,6 +17,10 @@ import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import type { FlashData, User } from "../shared/types";
 import { resolveSession, SESSION_COOKIE } from "./auth";
+import {
+  findOrganizationMembership,
+  type OrganizationMembershipRow,
+} from "./db";
 import { Inertia, type InertiaAssets } from "./inertia";
 
 /** Context variables shared by every route/middleware. */
@@ -35,6 +39,7 @@ export interface AppEnv {
   Variables: {
     user: User | null;
     flash: FlashData;
+    organizationMembership: OrganizationMembershipRow | null;
     sessionToken: string | null;
     inertia: Inertia;
     requestId: string;
@@ -56,9 +61,14 @@ export const inertiaMiddleware =
     const resolved = await resolveSession(sessionToken);
     const user = resolved ? resolved.user : null;
     const flash = resolved ? resolved.flash : {};
+    const organizationMembership =
+      user && resolved?.activeOrganizationId
+        ? await findOrganizationMembership(user.id, resolved.activeOrganizationId)
+        : null;
     const cspNonce = generateNonce();
     c.set("user", user);
     c.set("flash", flash);
+    c.set("organizationMembership", organizationMembership);
     c.set("sessionToken", sessionToken);
     c.set("cspNonce", cspNonce);
     c.set(

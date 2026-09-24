@@ -38,6 +38,7 @@ export interface SessionRow {
   tokenHash: string;
   userId: number;
   flash: string;
+  activeOrganizationId: string | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -200,7 +201,7 @@ export const insertSession = (
 export const findSession = (tokenHash: string) =>
   d1
     .prepare(
-      "SELECT token_hash AS tokenHash, user_id AS userId, flash, expires_at AS expiresAt, created_at AS createdAt FROM sessions WHERE token_hash = ?",
+      "SELECT token_hash AS tokenHash, user_id AS userId, flash, active_organization_id AS activeOrganizationId, expires_at AS expiresAt, created_at AS createdAt FROM sessions WHERE token_hash = ?",
     )
     .bind(tokenHash)
     .first<SessionRow>();
@@ -297,6 +298,206 @@ export const listExpired = async (now: string) =>
       )
       .bind(now)
       .all<UploadRow>()
+  ).results;
+
+// ---------------------------------------------------------------------------
+// Organizations and memberships
+// ---------------------------------------------------------------------------
+
+export interface OrganizationMembershipRow {
+  membershipId: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  timezone: string;
+  isAdmin: number;
+}
+
+export interface OrganizationSummaryRow {
+  membershipId: string;
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  timezone: string;
+  isAdmin: number;
+}
+
+export interface CreateOrganizationInput {
+  organizationId: string;
+  membershipId: string;
+  adminRoleId: string;
+  userId: number;
+  name: string;
+  slug: string;
+  timezone: string;
+}
+
+export async function createOrganizationForUser(
+  input: CreateOrganizationInput,
+): Promise<void> {
+  await d1.batch([
+    d1
+      .prepare(
+        "INSERT INTO organizations (id, name, slug, timezone, created_by_user_id) VALUES (?, ?, ?, ?, ?)",
+      )
+      .bind(
+        input.organizationId,
+        input.name,
+        input.slug,
+        input.timezone,
+        input.userId,
+      ),
+    d1
+      .prepare(
+        "INSERT INTO organization_memberships (id, organization_id, user_id) VALUES (?, ?, ?)",
+      )
+      .bind(input.membershipId, input.organizationId, input.userId),
+    d1
+      .prepare(
+        "INSERT INTO roles (id, organization_id, name, description, is_system) VALUES (?, ?, 'Admin', 'Administrator organisasi', 1)",
+      )
+      .bind(input.adminRoleId, input.organizationId),
+    d1
+      .prepare(
+        "INSERT INTO membership_roles (membership_id, role_id) VALUES (?, ?)",
+      )
+      .bind(input.membershipId, input.adminRoleId),
+  ]);
+}
+
+export const findOrganizationMembership = (
+  userId: number,
+  organizationId: string,
+) =>
+  d1
+    .prepare(
+      `SELECT
+        m.id AS membershipId,
+        o.id AS organizationId,
+        o.name AS organizationName,
+        o.slug AS organizationSlug,
+        o.timezone,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM membership_roles mr
+          JOIN roles r ON r.id = mr.role_id
+          WHERE mr.membership_id = m.id
+            AND r.organization_id = o.id
+            AND r.name = 'Admin'
+            AND r.status = 'active'
+        ) THEN 1 ELSE 0 END AS isAdmin
+      FROM organization_memberships m
+      JOIN organizations o ON o.id = m.organization_id
+      WHERE m.user_id = ?
+        AND m.organization_id = ?
+        AND m.status = 'active'
+        AND o.status = 'active'`,
+    )
+    .bind(userId, organizationId)
+    .first<OrganizationMembershipRow>();
+
+export const listOrganizationsForUser = async (userId: number) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          m.id AS membershipId,
+          o.id AS organizationId,
+          o.name AS organizationName,
+          o.slug AS organizationSlug,
+          o.timezone,
+          CASE WHEN EXISTS (
+            SELECT 1
+            FROM membership_roles mr
+            JOIN roles r ON r.id = mr.role_id
+            WHERE mr.membership_id = m.id
+              AND r.organization_id = o.id
+              AND r.name = 'Admin'
+              AND r.status = 'active'
+          ) THEN 1 ELSE 0 END AS isAdmin
+        FROM organization_memberships m
+        JOIN organizations o ON o.id = m.organization_id
+        WHERE m.user_id = ?
+          AND m.status = 'active'
+          AND o.status = 'active'
+        ORDER BY o.name COLLATE NOCASE`,
+      )
+      .bind(userId)
+      .all<OrganizationSummaryRow>()
+  ).results;
+
+export const updateSessionActiveOrganization = (
+  organizationId: string | null,
+  tokenHash: string,
+) =>
+  d1
+    .prepare(
+      "UPDATE sessions SET active_organization_id = ? WHERE token_hash = ?",
+    )
+    .bind(organizationId, tokenHash)
+    .run();
+
+export const countOrganizationUsers = (organizationId: string) =>
+  d1
+    .prepare(
+      "SELECT COUNT(*) AS n FROM organization_memberships WHERE organization_id = ? AND status = 'active'",
+    )
+    .bind(organizationId)
+    .first<{ n: number }>();
+
+export const listOrganizationUsers = async (
+  organizationId: string,
+  limit: number,
+  offset: number,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          u.id,
+          u.name,
+          u.email,
+          u.password_hash AS passwordHash,
+          u.role,
+          u.google_id AS googleId,
+          u.avatar_url AS avatarUrl,
+          u.email_verified AS emailVerified,
+          u.created_at AS createdAt
+        FROM organization_memberships m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.organization_id = ? AND m.status = 'active'
+        ORDER BY m.created_at DESC
+        LIMIT ? OFFSET ?`,
+      )
+      .bind(organizationId, limit, offset)
+      .all<UserRow>()
+  ).results;
+
+export const recentOrganizationUsers = async (
+  organizationId: string,
+  limit: number,
+) =>
+  (
+    await d1
+      .prepare(
+        `SELECT
+          u.id,
+          u.name,
+          u.email,
+          u.password_hash AS passwordHash,
+          u.role,
+          u.google_id AS googleId,
+          u.avatar_url AS avatarUrl,
+          u.email_verified AS emailVerified,
+          u.created_at AS createdAt
+        FROM organization_memberships m
+        JOIN users u ON u.id = m.user_id
+        WHERE m.organization_id = ? AND m.status = 'active'
+        ORDER BY m.created_at DESC
+        LIMIT ?`,
+      )
+      .bind(organizationId, limit)
+      .all<UserRow>()
   ).results;
 
 // ---------------------------------------------------------------------------
