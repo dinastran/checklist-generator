@@ -14,7 +14,11 @@
  */
 import type { Page } from "@inertiajs/core";
 import { renderPage } from "../client/ssr";
-import type { FlashData, SharedPageProps } from "../shared/types";
+import type {
+	FlashData,
+	OrganizationContext,
+	SharedPageProps,
+} from "../shared/types";
 import { config } from "./config";
 import { clearFlash } from "./auth";
 
@@ -34,6 +38,7 @@ export interface InertiaContext {
 	headers: Record<string, string | undefined>;
 	user: SharedPageProps["auth"]["user"];
 	flash: FlashData;
+	organization: OrganizationContext | null;
 	sessionToken: string | null;
 	/** Per-request CSP nonce for inline scripts/styles. */
 	cspNonce: string;
@@ -108,6 +113,7 @@ export class Inertia {
 			props: {
 				...pageProps,
 				auth: { user: this.c.user },
+				organization: this.c.organization,
 				errors: errors ?? flashErrors ?? {},
 			} as unknown as Page["props"], // core types `errors` as Errors & ErrorBag (intersection)
 			url: this.currentUrl,
