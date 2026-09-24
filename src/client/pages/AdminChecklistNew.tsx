@@ -1,5 +1,5 @@
 import { Head, Link, useForm } from "@inertiajs/react";
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Layout from "../components/Layout";
 import Field, { inputClass } from "../components/Field";
 
@@ -15,10 +15,26 @@ export default function AdminChecklistNew({ roles }: { roles: RoleOption[] }) {
 		roleIds: [] as string[],
 		items: [{ title: "", description: "" }],
 	});
+	const [itemKeys, setItemKeys] = useState(["initial-item"]);
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
 		post("/admin/checklists");
+	};
+
+	const addItem = () => {
+		setData("items", [...data.items, { title: "", description: "" }]);
+		setItemKeys((current) => [...current, crypto.randomUUID()]);
+	};
+
+	const removeItem = (index: number) => {
+		setData(
+			"items",
+			data.items.filter((_, itemIndex) => itemIndex !== index),
+		);
+		setItemKeys((current) =>
+			current.filter((_, itemIndex) => itemIndex !== index),
+		);
 	};
 
 	const toggleRole = (roleId: string) => {
@@ -90,14 +106,14 @@ export default function AdminChecklistNew({ roles }: { roles: RoleOption[] }) {
 						<button
 							type="button"
 							className="px-3 py-2 rounded-lg border border-border bg-transparent text-sm cursor-pointer"
-							onClick={() => setData("items", [...data.items, { title: "", description: "" }])}
+							onClick={addItem}
 						>
 							Tambah item
 						</button>
 					</div>
 					<div className="grid gap-3">
 						{data.items.map((item, index) => (
-							<div key={`item-${index + 1}`} className="grid grid-cols-[40px_1fr_auto] gap-3 items-start max-md:grid-cols-[32px_1fr]">
+							<div key={itemKeys[index]} className="grid grid-cols-[40px_1fr_auto] gap-3 items-start max-md:grid-cols-[32px_1fr]">
 								<div className="w-8 h-8 rounded-full bg-primary-soft text-primary flex items-center justify-center font-semibold text-sm">
 									{index + 1}
 								</div>
@@ -128,7 +144,7 @@ export default function AdminChecklistNew({ roles }: { roles: RoleOption[] }) {
 									type="button"
 									disabled={data.items.length === 1}
 									className="px-3 py-2 rounded-lg border border-border bg-transparent text-sm cursor-pointer disabled:opacity-40 max-md:col-start-2"
-									onClick={() => setData("items", data.items.filter((_, itemIndex) => itemIndex !== index))}
+									onClick={() => removeItem(index)}
 								>
 									Hapus
 								</button>
