@@ -24,6 +24,10 @@ import { avatarRoutes } from "./routes/avatars.routes";
 import { googleOauthRoutes } from "./routes/google-oauth.routes";
 import { pageRoutes } from "./routes/pages.routes";
 import {
+  organizationRoutes,
+  ORGANIZATION_VALIDATION_MESSAGES,
+} from "./routes/organizations.routes";
+import {
   profileRoutes,
   PROFILE_VALIDATION_MESSAGES,
 } from "./routes/profile.routes";
@@ -40,11 +44,14 @@ const COMPONENT_BY_PATH: Record<string, string> = {
   "/reset-password": "ResetPassword",
   "/profile": "Profile",
   "/profile/password": "Profile",
+  "/organizations/new": "OrganizationNew",
+  "/organizations/switch": "OrganizationSwitch",
 };
 
 const VALIDATION_MESSAGES_ALL = {
   ...VALIDATION_MESSAGES,
   ...PROFILE_VALIDATION_MESSAGES,
+  ...ORGANIZATION_VALIDATION_MESSAGES,
 };
 
 /**
@@ -174,6 +181,7 @@ export function createApp(assets: InertiaAssets) {
   app.route("/", googleOauthRoutes());
   app.route("/", pageRoutes());
   app.route("/", profileRoutes());
+  app.route("/", organizationRoutes());
 
   return app;
 }
